@@ -280,6 +280,12 @@ const ResumeOptimizer: React.FC<ResumeOptimizerProps> = ({
     if (!resumeData.certifications || resumeData.certifications.length === 0 || resumeData.certifications.every(cert => (typeof cert === 'string' ? !cert.trim() : !cert.title?.trim()))) {
       missing.push('certifications');
     }
+    // Contact details (basic sanity): require at least phone and email
+    const phoneOk = typeof resumeData.phone === 'string' && resumeData.phone.trim().length > 0;
+    const emailOk = typeof resumeData.email === 'string' && resumeData.email.trim().length > 0;
+    if (!phoneOk || !emailOk) {
+      missing.push('contactDetails');
+    }
     return missing;
   }, []);
 
@@ -383,7 +389,13 @@ const ResumeOptimizer: React.FC<ResumeOptimizerProps> = ({
         ...(data.skills && data.skills.length > 0 && { skills: data.skills }),
         ...(data.education && data.education.length > 0 && { education: data.education }),
         ...(data.certifications && data.certifications.length > 0 && { certifications: data.certifications }), // Add certifications
-        ...(data.summary && { summary: data.summary })
+        ...(data.summary && { summary: data.summary }),
+        ...(data.contactDetails && {
+          phone: data.contactDetails.phone || pendingResumeData.phone,
+          email: data.contactDetails.email || pendingResumeData.email,
+          linkedin: data.contactDetails.linkedin || pendingResumeData.linkedin,
+          github: data.contactDetails.github || pendingResumeData.github
+        })
       };
       setShowMissingSectionsModal(false);
       setMissingSections([]);
