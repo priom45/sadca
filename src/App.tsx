@@ -560,7 +560,8 @@ const handleDiwaliCTAClick = useCallback(() => {
                       { id: '/blog', label: 'Blog', icon: <BookOpen className="w-5 h-5" /> },
                       { id: '/careers', label: 'Careers', icon: <Briefcase className="w-5 h-5" /> },
                       { id: '/jobs', label: 'Explore Jobs', icon: <Briefcase className="w-5 h-5" /> },
-                      ...(user?.role === 'admin' ? [{ id: '/admin/jobs', label: 'Admin Panel', icon: <Crown className="w-5 h-5" /> }] : []),
+                      ...((user?.role === 'admin' || user?.email === 'primoboostai@gmail.com') ? [{ id: '/admin/jobs', label: 'Admin Panel', icon: <Crown className="w-5 h-5" /> }] : []),
+
                       ...((user?.role === 'admin' || user?.email === 'primoboostai@gmail.com') ? [{ id: '/admin/blog', label: 'Blog Management', icon: <FileText className="w-5 h-5" /> }] : []),
 
                       { id: '/tutorials', label: 'Tutorials', icon: <BookOpen className="w-5 h-5" /> },
