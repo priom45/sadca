@@ -37,6 +37,7 @@ import { AdminUsersPage } from './components/admin/AdminUsersPage';
 import { PortfolioBuilderPage } from './components/pages/PortfolioBuilderPage';
 import { DiwaliOfferBanner } from './components/DiwaliOfferBanner';
 import { MockInterviewPage } from './components/pages/MockInterviewPage';
+import { ResumeBasedInterviewPage } from './components/pages/ResumeBasedInterviewPage';
 
 function App() {
   const { isAuthenticated, user, markProfilePromptSeen, isLoading } = useAuth();
@@ -440,6 +441,7 @@ const handleDiwaliCTAClick = useCallback(() => {
           <Route path="/linkedin-generator" element={<LinkedInMessageGenerator {...commonPageProps} />} />
           <Route path="/portfolio-builder" element={<PortfolioBuilderPage isAuthenticated={isAuthenticated} onShowAuth={handleShowAuth} />} />
           <Route path="/mock-interview" element={<MockInterviewPage isAuthenticated={isAuthenticated} onShowAuth={handleShowAuth} />} />
+          <Route path="/resume-interview" element={<ResumeBasedInterviewPage />} />
           <Route path="/about" element={<AboutUs />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/tutorials" element={<Tutorials />} />
