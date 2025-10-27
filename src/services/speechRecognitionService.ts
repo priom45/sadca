@@ -5,6 +5,10 @@ export class SpeechRecognitionService {
   private onTranscriptUpdate?: (transcript: string) => void;
   private onEnd?: (finalTranscript: string) => void;
   private onError?: (error: string) => void;
+  private autoRestart: boolean = false;
+  private restartAttempts: number = 0;
+  private maxRestartAttempts: number = 3;
+  private restartDelay: number = 1000;
 
   constructor() {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
@@ -45,14 +49,51 @@ export class SpeechRecognitionService {
 
     this.recognition.onerror = (event: any) => {
       console.error('Speech recognition error:', event.error);
-      if (this.onError) {
+
+      if (event.error === 'network') {
+        console.warn('Network error in speech recognition, attempting auto-restart...');
+        if (this.autoRestart && this.restartAttempts < this.maxRestartAttempts) {
+          this.restartAttempts++;
+          setTimeout(() => {
+            if (this.autoRestart) {
+              try {
+                console.log(`Restarting speech recognition (attempt ${this.restartAttempts}/${this.maxRestartAttempts})`);
+                this.recognition.start();
+              } catch (restartError) {
+                console.error('Failed to restart speech recognition:', restartError);
+                if (this.onError) {
+                  this.onError('network-restart-failed');
+                }
+              }
+            }
+          }, this.restartDelay * this.restartAttempts);
+        } else if (this.onError) {
+          this.onError(event.error);
+        }
+      } else if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        if (this.onError) {
+          this.onError('microphone-permission-denied');
+        }
+      } else if (this.onError) {
         this.onError(event.error);
       }
     };
 
     this.recognition.onend = () => {
       this.isListening = false;
-      if (this.onEnd) {
+      if (this.autoRestart && this.restartAttempts < this.maxRestartAttempts) {
+        console.log('Speech recognition ended, auto-restarting...');
+        setTimeout(() => {
+          if (this.autoRestart) {
+            try {
+              this.recognition.start();
+              this.isListening = true;
+            } catch (error) {
+              console.error('Failed to auto-restart speech recognition:', error);
+            }
+          }
+        }, 100);
+      } else if (this.onEnd) {
         this.onEnd(this.transcript);
       }
     };
@@ -65,7 +106,8 @@ export class SpeechRecognitionService {
   async startListening(
     onUpdate: (transcript: string) => void,
     onComplete: (transcript: string) => void,
-    onErrorCallback: (error: string) => void
+    onErrorCallback: (error: string) => void,
+    enableAutoRestart: boolean = true
   ): Promise<void> {
     if (!this.isSupported()) {
       throw new Error('Speech recognition is not supported in this browser');
@@ -80,6 +122,8 @@ export class SpeechRecognitionService {
     this.onTranscriptUpdate = onUpdate;
     this.onEnd = onComplete;
     this.onError = onErrorCallback;
+    this.autoRestart = enableAutoRestart;
+    this.restartAttempts = 0;
 
     try {
       this.recognition.start();
@@ -94,6 +138,8 @@ export class SpeechRecognitionService {
     if (!this.isListening) {
       return this.transcript;
     }
+
+    this.autoRestart = false;
 
     if (this.recognition) {
       this.recognition.stop();
@@ -110,6 +156,8 @@ export class SpeechRecognitionService {
   reset(): void {
     this.transcript = '';
     this.isListening = false;
+    this.autoRestart = false;
+    this.restartAttempts = 0;
     this.onTranscriptUpdate = undefined;
     this.onEnd = undefined;
     this.onError = undefined;

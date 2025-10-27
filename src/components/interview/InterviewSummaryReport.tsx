@@ -29,32 +29,48 @@ export const InterviewSummaryReport: React.FC<InterviewSummaryReportProps> = ({
 
   const loadSessionData = async () => {
     try {
+      if (!sessionId || sessionId === '') {
+        console.error('Invalid session ID provided');
+        setLoading(false);
+        setSessionData(null);
+        return;
+      }
+
       const data = await interviewService.getSessionWithDetails(sessionId);
       if (!data) {
-        throw new Error('Session not found');
+        console.error('Session not found for ID:', sessionId);
+        setLoading(false);
+        setSessionData(null);
+        return;
       }
 
       setSessionData(data);
 
-      const responsesWithFeedback = data.responses
-        .filter(r => r.ai_feedback_json && r.user_answer_text)
-        .map(r => ({
-          question: data.questions.find(q => q.id === r.question_id)?.question_text || '',
-          answer: r.user_answer_text || '',
-          feedback: r.ai_feedback_json as AIFeedback,
-          score: r.individual_score || 0
-        }));
+      if (data.responses && data.responses.length > 0) {
+        const responsesWithFeedback = data.responses
+          .filter(r => r.ai_feedback_json && r.user_answer_text)
+          .map(r => ({
+            question: data.questions.find(q => q.id === r.question_id)?.question_text || '',
+            answer: r.user_answer_text || '',
+            feedback: r.ai_feedback_json as AIFeedback,
+            score: r.individual_score || 0
+          }));
 
-      if (responsesWithFeedback.length > 0) {
-        const insights = await interviewFeedbackService.generateOverallSummary(responsesWithFeedback);
-        setOverallInsights(insights);
+        if (responsesWithFeedback.length > 0) {
+          try {
+            const insights = await interviewFeedbackService.generateOverallSummary(responsesWithFeedback);
+            setOverallInsights(insights);
+          } catch (insightError) {
+            console.error('Error generating insights:', insightError);
+          }
+        }
       }
 
       setLoading(false);
     } catch (error) {
       console.error('Error loading session data:', error);
-      alert('Failed to load interview summary');
       setLoading(false);
+      setSessionData(null);
     }
   };
 
