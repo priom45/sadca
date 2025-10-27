@@ -37,8 +37,16 @@ export const TestCaseAccordion: React.FC<TestCaseAccordionProps> = ({
     return null;
   }
 
-  const passedCount = executionResults.filter(r => r.passed).length;
-  const totalTests = executionResults.length;
+  // Build a quick lookup to robustly match results to test cases even if order differs
+  const makeKey = (tc: TestCase) => `${tc.input}__${tc.expectedOutput}`;
+  const resultMap = new Map<string, ExecutionResult>();
+  for (const r of executionResults) {
+    resultMap.set(makeKey(r.testCase), r);
+  }
+
+  const resultsMatched = testCases.map(tc => resultMap.get(makeKey(tc))).filter(Boolean) as ExecutionResult[];
+  const passedCount = resultsMatched.filter(r => r.passed).length;
+  const totalTests = testCases.length;
 
   return (
     <div className="bg-dark-300 rounded-lg border border-gray-700 overflow-hidden">
@@ -76,7 +84,7 @@ export const TestCaseAccordion: React.FC<TestCaseAccordionProps> = ({
 
       <div className="divide-y divide-gray-700">
         {testCases.map((testCase, index) => {
-          const result = executionResults[index];
+          const result = resultMap.get(makeKey(testCase));
           const isExpanded = expandedCases.has(index);
 
           return (
