@@ -41,6 +41,7 @@ import { ResumeBasedInterviewPage } from './components/pages/ResumeBasedIntervie
 import { UnifiedInterviewOrchestrator } from './components/interview/UnifiedInterviewOrchestrator';
 import { SmartInterviewPage } from './components/pages/SmartInterviewPage';
 import { BlogPage } from './components/pages/BlogPage';
+import { EnhancedBlogPage } from './components/pages/EnhancedBlogPage';
 import { BlogPostPage } from './components/pages/BlogPostPage';
 import { AdminBlogPostsList } from './components/admin/AdminBlogPostsList';
 import { AdminBlogPostForm } from './components/admin/AdminBlogPostForm';
@@ -495,7 +496,7 @@ const handleDiwaliCTAClick = useCallback(() => {
               </AdminRoute>
             }
           />
-          <Route path="/blog" element={<BlogPage />} />
+          <Route path="/blog" element={<EnhancedBlogPage isAuthenticated={isAuthenticated} onShowAuth={() => setShowAuthModal(true)} />} />
           <Route path="/blog/:slug" element={<BlogPostPage />} />
           <Route
             path="/admin/blog"

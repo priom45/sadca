@@ -312,5 +312,275 @@ export const blogService = {
     const wordsPerMinute = 200;
     const wordCount = content.trim().split(/\s+/).length;
     return Math.ceil(wordCount / wordsPerMinute);
+  },
+
+  async getBlogStatistics(): Promise<{
+    totalPosts: number;
+    totalCategories: number;
+    featuredPosts: number;
+    averageReadingTime: number;
+  }> {
+    try {
+      const { count: totalPosts } = await supabase
+        .from('blog_posts')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'published')
+        .lte('published_at', new Date().toISOString());
+
+      const { count: totalCategories } = await supabase
+        .from('blog_categories')
+        .select('*', { count: 'exact', head: true });
+
+      const { count: featuredPosts } = await supabase
+        .from('blog_posts')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'published')
+        .eq('is_featured', true)
+        .lte('published_at', new Date().toISOString());
+
+      const { data: posts } = await supabase
+        .from('blog_posts')
+        .select('estimated_reading_time')
+        .eq('status', 'published')
+        .lte('published_at', new Date().toISOString());
+
+      const averageReadingTime = posts && posts.length > 0
+        ? Math.round(posts.reduce((sum, p) => sum + (p.estimated_reading_time || 5), 0) / posts.length)
+        : 5;
+
+      return {
+        totalPosts: totalPosts || 0,
+        totalCategories: totalCategories || 0,
+        featuredPosts: featuredPosts || 0,
+        averageReadingTime
+      };
+    } catch (error) {
+      console.error('Error fetching blog statistics:', error);
+      return {
+        totalPosts: 0,
+        totalCategories: 0,
+        featuredPosts: 0,
+        averageReadingTime: 5
+      };
+    }
+  },
+
+  async fetchPublishedPostsWithAdvancedFilters(
+    page: number = 1,
+    pageSize: number = 12,
+    filters?: {
+      search?: string;
+      category_id?: string;
+      tag_id?: string;
+      reading_difficulty?: string;
+      reading_time_min?: number;
+      reading_time_max?: number;
+      is_featured?: boolean;
+      sort_by?: 'newest' | 'oldest' | 'most_viewed' | 'trending';
+    }
+  ): Promise<BlogPostsResponse> {
+    try {
+      let query = supabase
+        .from('blog_posts')
+        .select('*', { count: 'exact' })
+        .eq('status', 'published')
+        .lte('published_at', new Date().toISOString());
+
+      if (filters?.search) {
+        query = query.or(`title.ilike.%${filters.search}%,body_content.ilike.%${filters.search}%`);
+      }
+
+      if (filters?.reading_difficulty) {
+        query = query.eq('reading_difficulty', filters.reading_difficulty);
+      }
+
+      if (filters?.reading_time_min) {
+        query = query.gte('estimated_reading_time', filters.reading_time_min);
+      }
+
+      if (filters?.reading_time_max) {
+        query = query.lte('estimated_reading_time', filters.reading_time_max);
+      }
+
+      if (filters?.is_featured !== undefined) {
+        query = query.eq('is_featured', filters.is_featured);
+      }
+
+      if (filters?.category_id) {
+        const { data: postIds } = await supabase
+          .from('blog_post_categories')
+          .select('blog_post_id')
+          .eq('blog_category_id', filters.category_id);
+
+        if (postIds && postIds.length > 0) {
+          query = query.in('id', postIds.map(p => p.blog_post_id));
+        } else {
+          return {
+            posts: [],
+            total: 0,
+            page,
+            pageSize,
+            totalPages: 0
+          };
+        }
+      }
+
+      if (filters?.tag_id) {
+        const { data: postIds } = await supabase
+          .from('blog_post_tags')
+          .select('blog_post_id')
+          .eq('blog_tag_id', filters.tag_id);
+
+        if (postIds && postIds.length > 0) {
+          query = query.in('id', postIds.map(p => p.blog_post_id));
+        } else {
+          return {
+            posts: [],
+            total: 0,
+            page,
+            pageSize,
+            totalPages: 0
+          };
+        }
+      }
+
+      switch (filters?.sort_by) {
+        case 'oldest':
+          query = query.order('published_at', { ascending: true });
+          break;
+        case 'most_viewed':
+          query = query.order('view_count', { ascending: false });
+          break;
+        case 'trending':
+          query = query.order('trending_score', { ascending: false });
+          break;
+        case 'newest':
+        default:
+          query = query.order('published_at', { ascending: false });
+          break;
+      }
+
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+      query = query.range(from, to);
+
+      const { data: posts, error, count } = await query;
+
+      if (error) throw error;
+
+      const postsWithRelations = await Promise.all(
+        (posts || []).map(async (post) => {
+          const categories = await this.getPostCategories(post.id);
+          const tags = await this.getPostTags(post.id);
+          return { ...post, categories, tags } as BlogPostWithRelations;
+        })
+      );
+
+      return {
+        posts: postsWithRelations,
+        total: count || 0,
+        page,
+        pageSize,
+        totalPages: Math.ceil((count || 0) / pageSize)
+      };
+    } catch (error) {
+      console.error('Error fetching published posts with filters:', error);
+      throw error;
+    }
+  },
+
+  async trackUserInteraction(
+    userId: string,
+    blogPostId: string,
+    interactionType: 'viewed' | 'bookmarked' | 'completed',
+    readingProgress?: number
+  ): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('blog_user_interactions')
+        .upsert({
+          user_id: userId,
+          blog_post_id: blogPostId,
+          interaction_type: interactionType,
+          reading_progress: readingProgress || 0,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id,blog_post_id,interaction_type'
+        });
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error tracking user interaction:', error);
+    }
+  },
+
+  async getUserBookmarkedPosts(userId: string): Promise<BlogPostWithRelations[]> {
+    try {
+      const { data: interactions } = await supabase
+        .from('blog_user_interactions')
+        .select('blog_post_id')
+        .eq('user_id', userId)
+        .eq('interaction_type', 'bookmarked');
+
+      if (!interactions || interactions.length === 0) return [];
+
+      const postIds = interactions.map(i => i.blog_post_id);
+
+      const { data: posts, error } = await supabase
+        .from('blog_posts')
+        .select('*')
+        .in('id', postIds)
+        .eq('status', 'published')
+        .lte('published_at', new Date().toISOString())
+        .order('published_at', { ascending: false });
+
+      if (error) throw error;
+
+      const postsWithRelations = await Promise.all(
+        (posts || []).map(async (post) => {
+          const categories = await this.getPostCategories(post.id);
+          const tags = await this.getPostTags(post.id);
+          return { ...post, categories, tags } as BlogPostWithRelations;
+        })
+      );
+
+      return postsWithRelations;
+    } catch (error) {
+      console.error('Error fetching bookmarked posts:', error);
+      return [];
+    }
+  },
+
+  async isPostBookmarked(userId: string, blogPostId: string): Promise<boolean> {
+    try {
+      const { data, error } = await supabase
+        .from('blog_user_interactions')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('blog_post_id', blogPostId)
+        .eq('interaction_type', 'bookmarked')
+        .maybeSingle();
+
+      if (error) throw error;
+      return !!data;
+    } catch (error) {
+      console.error('Error checking bookmark status:', error);
+      return false;
+    }
+  },
+
+  async removeBookmark(userId: string, blogPostId: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('blog_user_interactions')
+        .delete()
+        .eq('user_id', userId)
+        .eq('blog_post_id', blogPostId)
+        .eq('interaction_type', 'bookmarked');
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error removing bookmark:', error);
+    }
   }
 };

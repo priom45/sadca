@@ -12,6 +12,11 @@ export interface BlogPost {
   meta_title: string | null;
   meta_description: string | null;
   view_count: number;
+  reading_difficulty?: 'beginner' | 'intermediate' | 'advanced';
+  is_featured?: boolean;
+  estimated_reading_time?: number;
+  trending_score?: number;
+  last_trending_update?: string;
   created_at: string;
   updated_at: string;
   categories?: BlogCategory[];
@@ -62,8 +67,20 @@ export interface BlogPostFilters {
   category_id?: string;
   tag_id?: string;
   search?: string;
+  reading_difficulty?: 'beginner' | 'intermediate' | 'advanced';
+  reading_time_min?: number;
+  reading_time_max?: number;
+  is_featured?: boolean;
+  sort_by?: 'newest' | 'oldest' | 'most_viewed' | 'trending';
   limit?: number;
   offset?: number;
+}
+
+export interface BlogStatistics {
+  totalPosts: number;
+  totalCategories: number;
+  featuredPosts: number;
+  averageReadingTime: number;
 }
 
 export interface BlogPostsResponse {
