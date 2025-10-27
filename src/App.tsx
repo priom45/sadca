@@ -39,6 +39,7 @@ import { DiwaliOfferBanner } from './components/DiwaliOfferBanner';
 import { MockInterviewPage } from './components/pages/MockInterviewPage';
 import { ResumeBasedInterviewPage } from './components/pages/ResumeBasedInterviewPage';
 import { UnifiedInterviewOrchestrator } from './components/interview/UnifiedInterviewOrchestrator';
+import { SmartInterviewPage } from './components/pages/SmartInterviewPage';
 
 function App() {
   const { isAuthenticated, user, markProfilePromptSeen, isLoading } = useAuth();
@@ -444,6 +445,7 @@ const handleDiwaliCTAClick = useCallback(() => {
           <Route path="/mock-interview" element={<MockInterviewPage isAuthenticated={isAuthenticated} onShowAuth={handleShowAuth} />} />
           <Route path="/resume-interview" element={<ResumeBasedInterviewPage />} />
           <Route path="/realistic-interview" element={<UnifiedInterviewOrchestrator />} />
+          <Route path="/smart-interview" element={<SmartInterviewPage isAuthenticated={isAuthenticated} onShowAuth={handleShowAuth} />} />
           <Route path="/about" element={<AboutUs />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/tutorials" element={<Tutorials />} />
