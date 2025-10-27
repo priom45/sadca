@@ -29,6 +29,13 @@ import { speechActivityDetector } from '../../services/speechActivityDetector';
 import { useFullScreenMonitor } from '../../hooks/useFullScreenMonitor';
 import { useTabSwitchDetector } from '../../hooks/useTabSwitchDetector';
 import { SimplifiedInterviewHeader } from './SimplifiedInterviewHeader';
+import { EnhancedCodeEditor } from './EnhancedCodeEditor';
+import { TestCaseAccordion } from './TestCaseAccordion';
+import { VoiceActivityIndicator } from './VoiceActivityIndicator';
+import { TranscriptDisplay } from './TranscriptDisplay';
+import { QuestionCard } from './QuestionCard';
+import { SessionRecoveryModal } from './SessionRecoveryModal';
+import { interviewSessionPersistence, InterviewSessionState } from '../../services/interviewSessionPersistence';
 import { supabase } from '../../lib/supabaseClient';
 
 interface RealisticInterviewRoomProps {
@@ -75,6 +82,8 @@ export const RealisticInterviewRoom: React.FC<RealisticInterviewRoomProps> = ({
   const [isSkipping, setIsSkipping] = useState(false);
   const [autoSubmitted, setAutoSubmitted] = useState(false);
   const [showAutoSubmitInfo, setShowAutoSubmitInfo] = useState(true);
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [recoveryData, setRecoveryData] = useState<InterviewSessionState | null>(null);
   const [hasStartedSpeaking, setHasStartedSpeaking] = useState(false);
 
   const [showFollowUp, setShowFollowUp] = useState(false);
@@ -136,11 +145,37 @@ export const RealisticInterviewRoom: React.FC<RealisticInterviewRoomProps> = ({
   const currentQuestion = questions[currentQuestionIndex];
 
   useEffect(() => {
-    initializeInterview();
+    checkForRecoverableSession();
     return () => {
       cleanup();
     };
   }, []);
+
+  useEffect(() => {
+    if (sessionId && stage !== 'loading' && stage !== 'ready') {
+      const getState = (): InterviewSessionState => ({
+        sessionId,
+        userId,
+        currentQuestionIndex,
+        totalQuestions: questions.length,
+        timeRemaining,
+        currentTranscript,
+        textAnswer: verbalAnswer,
+        codeAnswer,
+        selectedLanguage,
+        questionsAnswered: currentQuestionIndex,
+        questionsSkipped: 0,
+        lastSaved: new Date().toISOString(),
+        interviewType: 'realistic'
+      });
+
+      interviewSessionPersistence.startAutoSave(getState);
+
+      return () => {
+        interviewSessionPersistence.stopAutoSave();
+      };
+    }
+  }, [sessionId, stage, currentQuestionIndex, timeRemaining, currentTranscript, verbalAnswer, codeAnswer]);
 
   useEffect(() => {
     if (stage === 'listening' && !isPaused && !currentQuestion?.requires_coding) {
@@ -222,6 +257,50 @@ export const RealisticInterviewRoom: React.FC<RealisticInterviewRoomProps> = ({
       }
     };
   }, [isPaused, stage]);
+
+  const checkForRecoverableSession = async () => {
+    const recoverable = await interviewSessionPersistence.checkForRecoverableSession(userId, 'realistic');
+    if (recoverable) {
+      setRecoveryData(recoverable);
+      setShowRecoveryModal(true);
+    } else {
+      initializeInterview();
+    }
+  };
+
+  const handleRecoverSession = async () => {
+    if (!recoveryData) return;
+
+    try {
+      setShowRecoveryModal(false);
+      setStage('loading');
+
+      const loadedQuestions = await realisticInterviewService.generateInterviewQuestions(config, resume);
+      setQuestions(loadedQuestions);
+      setSessionId(recoveryData.sessionId);
+      setCurrentQuestionIndex(recoveryData.currentQuestionIndex);
+      setTimeRemaining(recoveryData.timeRemaining);
+      setCurrentTranscript(recoveryData.currentTranscript);
+      setVerbalAnswer(recoveryData.textAnswer);
+      setCodeAnswer(recoveryData.codeAnswer);
+      setSelectedLanguage(recoveryData.selectedLanguage);
+
+      await requestMediaPermissions();
+      setStage('question');
+      setTimeout(() => startListening(), 1000);
+    } catch (error) {
+      console.error('Error recovering session:', error);
+      initializeInterview();
+    }
+  };
+
+  const handleStartNewSession = () => {
+    if (recoveryData) {
+      interviewSessionPersistence.clearSessionState(recoveryData.sessionId);
+    }
+    setShowRecoveryModal(false);
+    initializeInterview();
+  };
 
   const initializeInterview = async () => {
     try {
@@ -646,6 +725,7 @@ export const RealisticInterviewRoom: React.FC<RealisticInterviewRoomProps> = ({
 
     const totalDuration = Math.floor((Date.now() - sessionStartTimeRef.current) / 1000);
     await realisticInterviewService.completeSession(sessionId, totalDuration);
+    await interviewSessionPersistence.clearSessionState(sessionId);
 
     fullScreen.exitFullScreen();
     onInterviewComplete(sessionId);
@@ -858,6 +938,21 @@ export const RealisticInterviewRoom: React.FC<RealisticInterviewRoomProps> = ({
     );
   }
 
+  if (showRecoveryModal && recoveryData) {
+    return (
+      <SessionRecoveryModal
+        sessionData={{
+          questionIndex: recoveryData.currentQuestionIndex,
+          totalQuestions: recoveryData.totalQuestions,
+          timeRemaining: recoveryData.timeRemaining,
+          lastSaved: new Date(recoveryData.lastSaved).toLocaleString()
+        }}
+        onRecover={handleRecoverSession}
+        onStartNew={handleStartNewSession}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-dark-100 flex flex-col">
       {showViolationWarning && (
@@ -908,7 +1003,7 @@ export const RealisticInterviewRoom: React.FC<RealisticInterviewRoomProps> = ({
       />
 
       <div className="flex-1 mt-20 pt-8 pb-20">
-        <div className="max-w-7xl mx-auto px-4 grid md:grid-cols-[300px_1fr_350px] gap-6 h-full">
+        <div className="max-w-7xl mx-auto px-4 grid lg:grid-cols-[280px_1fr_320px] gap-6 h-full">
           <div className="bg-dark-200 rounded-xl p-6 flex items-center justify-center">
             <div className="text-center">
               <div className={`w-32 h-32 rounded-full mx-auto mb-4 flex items-center justify-center transition-all ${
@@ -928,20 +1023,18 @@ export const RealisticInterviewRoom: React.FC<RealisticInterviewRoomProps> = ({
             </div>
           </div>
 
-          <div className="bg-dark-200 rounded-xl p-8 flex flex-col justify-center">
+          <div className="bg-dark-200 rounded-xl p-6 flex flex-col justify-center max-h-[calc(100vh-180px)] overflow-y-auto">
             {currentQuestion && (
               <div>
-                <div className="text-sm text-blue-400 mb-4 flex items-center gap-2">
-                  <span className="px-3 py-1 bg-blue-600 text-white text-xs rounded-full font-medium">
-                    {currentQuestion.question_type.replace('_', ' ').toUpperCase()}
-                  </span>
-                  <span className="px-3 py-1 bg-purple-600 text-white text-xs rounded-full font-medium">
-                    {currentQuestion.difficulty_level.toUpperCase()}
-                  </span>
-                </div>
-                <h3 className="text-3xl font-bold text-gray-100 mb-6 leading-relaxed">
-                  {currentQuestion.question_text}
-                </h3>
+                <QuestionCard
+                  questionNumber={currentQuestionIndex + 1}
+                  totalQuestions={questions.length}
+                  questionText={currentQuestion.question_text}
+                  questionType={currentQuestion.question_type}
+                  difficulty={currentQuestion.difficulty_level}
+                  requiresCoding={currentQuestion.requires_coding}
+                  relatedSkills={[]}
+                />
 
                 {aiSpeaking && aiCurrentText && (
                   <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4 mb-4">
@@ -954,23 +1047,23 @@ export const RealisticInterviewRoom: React.FC<RealisticInterviewRoomProps> = ({
                 )}
 
                 {currentQuestion.requires_coding ? (
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                        <MessageSquare className="w-4 h-4" />
-                        Explain Your Approach (Voice)
-                      </label>
-                      {stage === 'listening' && (
-                        <div className="bg-dark-300 rounded-lg p-4 min-h-[80px]">
-                          <p className="text-gray-300 text-sm">
-                            {currentTranscript || 'Start speaking to explain your approach...'}
-                          </p>
-                        </div>
-                      )}
-                    </div>
+                  <div className="space-y-4 mt-6">
+                    {stage === 'listening' && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+                          <MessageSquare className="w-4 h-4" />
+                          Explain Your Approach (Voice)
+                        </label>
+                        <TranscriptDisplay
+                          transcript={currentTranscript}
+                          isListening={true}
+                          placeholder="Start speaking to explain your approach..."
+                        />
+                      </div>
+                    )}
 
                     <div>
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between mb-3">
                         <label className="block text-sm font-medium text-gray-300 flex items-center gap-2">
                           <Code className="w-4 h-4" />
                           Write Your Code
@@ -987,11 +1080,12 @@ export const RealisticInterviewRoom: React.FC<RealisticInterviewRoomProps> = ({
                           ))}
                         </select>
                       </div>
-                      <textarea
+                      <EnhancedCodeEditor
                         value={codeAnswer}
-                        onChange={(e) => setCodeAnswer(e.target.value)}
-                        className="w-full h-80 px-4 py-3 bg-dark-400 text-green-400 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none font-mono text-sm"
+                        onChange={setCodeAnswer}
+                        language={selectedLanguage}
                         placeholder={`Write your ${selectedLanguage} code here...`}
+                        height="400px"
                       />
                     </div>
 
@@ -1013,50 +1107,16 @@ export const RealisticInterviewRoom: React.FC<RealisticInterviewRoomProps> = ({
                       </button>
                     </div>
 
-                    {showTestResults && executionResults.length > 0 && (
-                      <div className="bg-dark-400 rounded-lg p-4 border border-gray-700">
-                        <h3 className="font-semibold text-gray-100 mb-3 flex items-center gap-2">
-                          <AlertCircle className="w-5 h-5" />
-                          Test Results
-                        </h3>
-                        <div className="space-y-3">
-                          {executionResults.map((result, idx) => (
-                            <div
-                              key={idx}
-                              className={`p-3 rounded border ${
-                                result.passed
-                                  ? 'bg-green-900/30 border-green-700'
-                                  : 'bg-red-900/30 border-red-700'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="font-medium text-sm">Test Case {idx + 1}</span>
-                                {result.passed ? (
-                                  <CheckCircle className="w-5 h-5 text-green-500" />
-                                ) : (
-                                  <XCircle className="w-5 h-5 text-red-500" />
-                                )}
-                              </div>
-                              <div className="text-xs space-y-1 text-gray-300">
-                                <div>
-                                  <span className="font-medium">Input:</span> {result.testCase.input}
-                                </div>
-                                <div>
-                                  <span className="font-medium">Expected:</span>{' '}
-                                  {result.testCase.expectedOutput}
-                                </div>
-                                <div>
-                                  <span className="font-medium">Got:</span> {result.actualOutput}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                    {testCases.length > 0 && (
+                      <TestCaseAccordion
+                        testCases={testCases}
+                        executionResults={executionResults}
+                        isExecuting={isExecuting}
+                      />
                     )}
                   </div>
                 ) : (
-                  <div>
+                  <div className="mt-6">
                     {stage === 'listening' && (
                       <div className="space-y-4">
                         {showAutoSubmitInfo && (
@@ -1076,26 +1136,17 @@ export const RealisticInterviewRoom: React.FC<RealisticInterviewRoomProps> = ({
                           </div>
                         )}
 
-                        <div className="bg-dark-300 rounded-lg p-4 min-h-[100px] max-h-[200px] overflow-y-auto">
-                          <p className="text-gray-300 text-sm">
-                            {currentTranscript || 'Start speaking...'}
-                          </p>
-                        </div>
+                        <TranscriptDisplay
+                          transcript={currentTranscript}
+                          isListening={true}
+                          placeholder="Start speaking..."
+                        />
 
-                        {silenceCountdown <= 5 && silenceCountdown > 0 && (
-                          <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-3">
-                            <div className="flex items-center justify-between">
-                              <span className="text-yellow-400 text-sm">Auto-submitting in:</span>
-                              <span className="text-yellow-400 font-mono font-bold text-lg">{silenceCountdown}s</span>
-                            </div>
-                            <div className="mt-2 w-full bg-dark-400 rounded-full h-2 overflow-hidden">
-                              <div
-                                className="bg-yellow-400 h-full transition-all duration-1000"
-                                style={{ width: `${(silenceCountdown / 5) * 100}%` }}
-                              ></div>
-                            </div>
-                          </div>
-                        )}
+                        <VoiceActivityIndicator
+                          isSpeaking={isSpeaking}
+                          isListening={true}
+                          silenceCountdown={silenceCountdown}
+                        />
 
                         <div className="flex gap-2">
                           <button
@@ -1124,19 +1175,6 @@ export const RealisticInterviewRoom: React.FC<RealisticInterviewRoomProps> = ({
                           </button>
                         </div>
 
-                        <div className="flex items-center justify-center gap-3 py-2">
-                          {isSpeaking ? (
-                            <div className="flex items-center gap-2 text-green-400 text-sm font-semibold">
-                              <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-                              <span>🎤 Speaking...</span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2 text-gray-500 text-sm">
-                              <div className="w-3 h-3 bg-gray-500 rounded-full"></div>
-                              <span>Waiting for speech...</span>
-                            </div>
-                          )}
-                        </div>
                       </div>
                     )}
 
