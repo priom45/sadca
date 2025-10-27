@@ -69,6 +69,8 @@ class AuthService {
     }
 
     const isAdmin = data.user.email === 'primoboostai@gmail.com';
+const profileRole = data.user.user_metadata?.role || (isAdmin ? 'admin' : 'client');
+
 
     const userResult: User = {
       id: data.user.id,
