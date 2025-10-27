@@ -139,13 +139,38 @@ export const MockInterviewPage: React.FC<MockInterviewPageProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={handleStartInterview}
-            className="w-full btn-primary py-4 text-lg font-semibold flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all"
-          >
-            <Sparkles className="w-5 h-5" />
-            {isAuthenticated ? 'Start Mock Interview' : 'Sign In to Start'}
-          </button>
+          <div className="space-y-4">
+            <button
+              onClick={handleStartInterview}
+              className="w-full btn-primary py-4 text-lg font-semibold flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all"
+            >
+              <Sparkles className="w-5 h-5" />
+              {isAuthenticated ? 'Start Mock Interview' : 'Sign In to Start'}
+            </button>
+
+            {isAuthenticated && (
+              <button
+                onClick={() => navigate('/realistic-interview')}
+                className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-4 text-lg font-semibold rounded-lg flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all"
+              >
+                <Sparkles className="w-5 h-5" />
+                Try New Enhanced Interview (Beta)
+              </button>
+            )}
+
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-dark-300 dark:to-dark-300 rounded-lg p-4 border border-green-200 dark:border-green-800">
+              <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
+                ✨ New: Enhanced Realistic Interview
+              </h4>
+              <ul className="text-sm text-gray-700 dark:text-gray-300 space-y-1">
+                <li>• Role-based question selection (General or Company-specific)</li>
+                <li>• Project deep-dive with intelligent follow-ups</li>
+                <li>• Code review with line-by-line explanations</li>
+                <li>• Dynamic questions based on your answers</li>
+                <li>• No repeated questions across sessions</li>
+              </ul>
+            </div>
+          </div>
 
           {isAuthenticated && user && (
             <p className="text-center text-sm text-secondary-600 dark:text-gray-400 mt-4">
