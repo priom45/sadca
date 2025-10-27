@@ -247,7 +247,8 @@ const profileRole = profile?.role || (isAdmin ? 'admin' : 'client');
         lastLogin: new Date().toISOString(),
         hasSeenProfilePrompt: profile?.has_seen_profile_prompt || false,
         resumesCreatedCount: profile?.resumes_created_count || 0,
-        role: isAdmin ? 'admin' : 'client',
+        role: profileRole as 'admin' | 'client',
+
       };
       console.log('AuthService: getCurrentUser completed. Returning user data.');
       return userResult;
