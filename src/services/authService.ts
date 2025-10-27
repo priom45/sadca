@@ -230,6 +230,8 @@ const profileRole = data.user.user_metadata?.role || (isAdmin ? 'admin' : 'clien
       console.log('AuthService: User profile fetched for getCurrentUser. Profile:', profile ? profile.full_name : 'none');
 
       const isAdmin = session.user.email === 'primoboostai@gmail.com';
+const profileRole = profile?.role || (isAdmin ? 'admin' : 'client');
+
 
       const userResult: User = {
         id: session.user.id,
