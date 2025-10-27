@@ -40,6 +40,11 @@ import { MockInterviewPage } from './components/pages/MockInterviewPage';
 import { ResumeBasedInterviewPage } from './components/pages/ResumeBasedInterviewPage';
 import { UnifiedInterviewOrchestrator } from './components/interview/UnifiedInterviewOrchestrator';
 import { SmartInterviewPage } from './components/pages/SmartInterviewPage';
+import { BlogPage } from './components/pages/BlogPage';
+import { BlogPostPage } from './components/pages/BlogPostPage';
+import { AdminBlogPostsList } from './components/admin/AdminBlogPostsList';
+import { AdminBlogPostForm } from './components/admin/AdminBlogPostForm';
+import { AdminBlogCategoriesManager } from './components/admin/AdminBlogCategoriesManager';
 
 function App() {
   const { isAuthenticated, user, markProfilePromptSeen, isLoading } = useAuth();
@@ -490,6 +495,40 @@ const handleDiwaliCTAClick = useCallback(() => {
               </AdminRoute>
             }
           />
+          <Route path="/blog" element={<BlogPage />} />
+          <Route path="/blog/:slug" element={<BlogPostPage />} />
+          <Route
+            path="/admin/blog"
+            element={
+              <AdminRoute>
+                <AdminBlogPostsList />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/blog/new"
+            element={
+              <AdminRoute>
+                <AdminBlogPostForm />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/blog/edit/:id"
+            element={
+              <AdminRoute>
+                <AdminBlogPostForm />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/blog/categories"
+            element={
+              <AdminRoute>
+                <AdminBlogCategoriesManager />
+              </AdminRoute>
+            }
+          />
         </Routes>
 
         {showMobileMenu && (
@@ -517,9 +556,11 @@ const handleDiwaliCTAClick = useCallback(() => {
                     {[
                       { id: '/', label: 'Home', icon: <Home className="w-5 h-5" /> },
                       { id: '/about', label: 'About Us', icon: <Info className="w-5 h-5" /> },
+                      { id: '/blog', label: 'Blog', icon: <BookOpen className="w-5 h-5" /> },
                       { id: '/careers', label: 'Careers', icon: <Briefcase className="w-5 h-5" /> },
                       { id: '/jobs', label: 'Explore Jobs', icon: <Briefcase className="w-5 h-5" /> },
                       ...(user?.role === 'admin' ? [{ id: '/admin/jobs', label: 'Admin Panel', icon: <Crown className="w-5 h-5" /> }] : []),
+                      ...(user?.role === 'admin' ? [{ id: '/admin/blog', label: 'Blog Management', icon: <FileText className="w-5 h-5" /> }] : []),
                       { id: '/tutorials', label: 'Tutorials', icon: <BookOpen className="w-5 h-5" /> },
                       { id: '/contact', label: 'Contact', icon: <Phone className="w-5 h-5" /> },
                       ...(isAuthenticated ? [{ id: 'wallet', label: 'Referral & Wallet', icon: <Wallet className="w-5 h-5" /> }] : []),
