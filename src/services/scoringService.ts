@@ -1,7 +1,10 @@
 // src/services/scoringService.ts
 import { MatchScore, DetailedScore, ResumeData, ComprehensiveScore, ScoringMode, ExtractionMode } from '../types/resume';
+import { enhancedScoringService } from './enhancedScoringService';
+import { synonymExpansionService } from './synonymExpansionService';
 
 const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
+const ENABLE_SEMANTIC_MATCHING = true;
 
 if (!OPENROUTER_API_KEY) {
   throw new Error('OpenRouter API key is not configured. Please add VITE_OPENROUTER_API_KEY to your environment variables.');
@@ -216,8 +219,8 @@ Respond ONLY with valid JSON in this exact structure:
       const cleanedResult = result.replace(/```json/g, '').replace(/```/g, '').trim();
 
       try {
-        const parsedResult = JSON.parse(cleanedResult);
-        
+        let parsedResult = JSON.parse(cleanedResult);
+
         // Post-process confidence based on overall score
         if (parsedResult.overall >= 80) {
           parsedResult.confidence = 'High';
@@ -227,11 +230,44 @@ Respond ONLY with valid JSON in this exact structure:
           parsedResult.confidence = 'Low';
         }
 
+        // ENHANCEMENT: Apply semantic matching if enabled and in JD mode
+        if (ENABLE_SEMANTIC_MATCHING && scoringMode === 'jd_based' && jobDescription) {
+          try {
+            const keywords = await enhancedScoringService.extractKeywordsFromJD(jobDescription);
+            parsedResult = await enhancedScoringService.enhanceScoreWithSemantics(
+              resumeText,
+              jobDescription,
+              keywords,
+              parsedResult
+            );
+
+            // Cache the semantic score separately
+            const resumeHashHex = (await generateCacheKey(resumeText)).split('_')[0];
+            const jdHashHex = (await generateCacheKey('', jobDescription)).split('_')[1];
+
+            // Store in semantic cache (fire and forget)
+            enhancedScoringService.cacheSemanticScore(
+              resumeHashHex,
+              jdHashHex,
+              {
+                literal_score: 0,
+                semantic_score: 0,
+                combined_score: parsedResult.overall / 100,
+                literal_weight: 0.4,
+                semantic_weight: 0.6,
+                match_details: []
+              }
+            ).catch(err => console.warn('Failed to cache semantic score:', err));
+          } catch (semanticError) {
+            console.warn('Semantic enhancement failed, using base score:', semanticError);
+          }
+        }
+
         scoreCache.set(cacheKey, {
           result: parsedResult,
           timestamp: Date.now()
         });
-        
+
         return parsedResult;
       } catch (parseError) {
         console.error('JSON parsing error:', parseError);

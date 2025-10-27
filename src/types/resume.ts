@@ -199,4 +199,57 @@ export interface DetailedScore {
   recommendations: string[];
   grade: Grade;
 }
+
+export interface EmbeddingVector {
+  id?: string;
+  vector: number[];
+  text: string;
+  type: 'resume_section' | 'jd_requirement' | 'skill' | 'keyword';
+  metadata?: Record<string, any>;
+  created_at?: string;
+}
+
+export interface SemanticMatchResult {
+  similarity_score: number;
+  match_type: 'exact' | 'semantic' | 'partial' | 'none';
+  confidence: number;
+  matched_text?: string;
+  context?: string;
+}
+
+export interface HybridMatchScore {
+  literal_score: number;
+  semantic_score: number;
+  combined_score: number;
+  literal_weight: number;
+  semantic_weight: number;
+  match_details: SemanticMatchResult[];
+}
+
+export interface KeywordContext {
+  keyword: string;
+  found_in_resume: boolean;
+  context_sentences: string[];
+  relevance_score: number;
+  semantic_alternatives?: string[];
+}
+
+export interface ATSProfile {
+  profile_id: string;
+  name: 'workday' | 'greenhouse' | 'lever' | 'taleo' | 'generic';
+  keyword_weight: number;
+  experience_weight: number;
+  section_order_strict: boolean;
+  parsing_tolerance: 'strict' | 'moderate' | 'lenient';
+  metadata_emphasis: number;
+  custom_rules: Record<string, any>;
+}
+
+export interface ATSSimulationResult {
+  ats_system: string;
+  parse_success: boolean;
+  compatibility_score: number;
+  issues_detected: string[];
+  recommendations: string[];
+}
 ```
