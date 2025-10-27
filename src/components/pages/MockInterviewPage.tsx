@@ -141,22 +141,18 @@ export const MockInterviewPage: React.FC<MockInterviewPageProps> = ({
 
           <div className="space-y-4">
             <button
-              onClick={handleStartInterview}
+              onClick={() => {
+                if (!isAuthenticated) {
+                  onShowAuth();
+                } else {
+                  navigate('/realistic-interview');
+                }
+              }}
               className="w-full btn-primary py-4 text-lg font-semibold flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all"
             >
               <Sparkles className="w-5 h-5" />
-              {isAuthenticated ? 'Start Mock Interview' : 'Sign In to Start'}
+              {isAuthenticated ? 'Start Interview' : 'Sign In to Start'}
             </button>
-
-            {isAuthenticated && (
-              <button
-                onClick={() => navigate('/realistic-interview')}
-                className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-4 text-lg font-semibold rounded-lg flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all"
-              >
-                <Sparkles className="w-5 h-5" />
-                Try New Enhanced Interview (Beta)
-              </button>
-            )}
 
             <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-dark-300 dark:to-dark-300 rounded-lg p-4 border border-green-200 dark:border-green-800">
               <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
