@@ -901,7 +901,7 @@ export const SmartInterviewRoom: React.FC<SmartInterviewRoomProps> = ({
       />
 
       <div className="flex-1 mt-20 pt-8 pb-20">
-        <div className="max-w-7xl mx-auto px-4 grid md:grid-cols-[300px_1fr_350px] gap-6 h-full">
+          <div className="max-w-7xl mx-auto px-2 md:px-4 grid md:grid-cols-[300px_1fr_350px] gap-6 h-full">
           <div className="bg-dark-200 rounded-xl p-6 flex items-center justify-center">
             <div className="text-center">
               <div
@@ -1168,7 +1168,7 @@ export const SmartInterviewRoom: React.FC<SmartInterviewRoomProps> = ({
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-dark-200 border-t border-dark-300 py-3">
-        <div className="max-w-7xl mx-auto px-4 text-center text-sm text-gray-400">{statusMessage}</div>
+        <div className="max-w-7xl mx-auto px-2 md:px-4 text-center text-sm text-gray-400">{statusMessage}</div>
       </div>
     </div>
   );
