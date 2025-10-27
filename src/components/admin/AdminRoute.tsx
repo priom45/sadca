@@ -8,8 +8,6 @@ interface AdminRouteProps {
   children: React.ReactNode;
 }
 
-const ADMIN_EMAIL = 'primoboostai@gmail.com';
-
 export const AdminRoute: React.FC<AdminRouteProps> = ({ children }) => {
   const { user, isAuthenticated, isLoading } = useAuth();
 
@@ -28,7 +26,8 @@ export const AdminRoute: React.FC<AdminRouteProps> = ({ children }) => {
     return <Navigate to="/" replace />;
   }
 
-  const isAdmin = user?.email === ADMIN_EMAIL;
+  // Check both role field and email for backward compatibility
+  const isAdmin = user?.role === 'admin' || user?.email === 'primoboostai@gmail.com';
 
   if (!isAdmin) {
     return (
