@@ -70,12 +70,12 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             {difficulty.toUpperCase()}
           </span>
 
-          <span className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 ${
-            requiresCoding ? 'bg-purple-600 text-white' : 'bg-blue-600 text-white'
-          }`}>
-            {getTypeIcon()}
-            {requiresCoding ? 'CODING' : 'VERBAL'}
-          </span>
+          {requiresCoding && (
+            <span className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 bg-purple-600 text-white`}>
+              {getTypeIcon()}
+              {'CODING'}
+            </span>
+          )}
 
           {relatedSkills.slice(0, 3).map((skill, idx) => (
             <span
