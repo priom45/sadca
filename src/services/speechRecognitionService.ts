@@ -7,8 +7,11 @@ export class SpeechRecognitionService {
   private onError?: (error: string) => void;
   private autoRestart: boolean = false;
   private restartAttempts: number = 0;
-  private maxRestartAttempts: number = 3;
-  private restartDelay: number = 1000;
+  private maxRestartAttempts: number = 5;
+  private baseRestartDelay: number = 1000;
+  private consecutiveNetworkErrors: number = 0;
+  private lastErrorTime: number = 0;
+  private isRecovering: boolean = false;
 
   constructor() {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
@@ -42,6 +45,9 @@ export class SpeechRecognitionService {
       this.transcript += finalTranscript;
       const currentTranscript = this.transcript + interimTranscript;
 
+      this.consecutiveNetworkErrors = 0;
+      this.restartAttempts = 0;
+
       if (this.onTranscriptUpdate) {
         this.onTranscriptUpdate(currentTranscript);
       }
@@ -51,48 +57,87 @@ export class SpeechRecognitionService {
       console.error('Speech recognition error:', event.error);
 
       if (event.error === 'network') {
-        console.warn('Network error in speech recognition, attempting auto-restart...');
-        if (this.autoRestart && this.restartAttempts < this.maxRestartAttempts) {
+        this.consecutiveNetworkErrors++;
+        const timeSinceLastError = Date.now() - this.lastErrorTime;
+        this.lastErrorTime = Date.now();
+
+        if (timeSinceLastError < 2000 && this.consecutiveNetworkErrors > 3) {
+          console.error('Too many consecutive network errors, stopping auto-restart');
+          this.autoRestart = false;
+          this.isRecovering = false;
+          if (this.onError) {
+            this.onError('network-persistent-failure');
+          }
+          return;
+        }
+
+        if (this.autoRestart && this.restartAttempts < this.maxRestartAttempts && !this.isRecovering) {
+          this.isRecovering = true;
           this.restartAttempts++;
+          const exponentialDelay = this.baseRestartDelay * Math.pow(2, this.restartAttempts - 1);
+          const maxDelay = 8000;
+          const delay = Math.min(exponentialDelay, maxDelay);
+
+          console.warn(`Network error in speech recognition. Retry ${this.restartAttempts}/${this.maxRestartAttempts} in ${delay}ms...`);
+
           setTimeout(() => {
-            if (this.autoRestart) {
+            if (this.autoRestart && !this.isListening) {
               try {
-                console.log(`Restarting speech recognition (attempt ${this.restartAttempts}/${this.maxRestartAttempts})`);
+                console.log(`Attempting speech recognition restart (${this.restartAttempts}/${this.maxRestartAttempts})`);
                 this.recognition.start();
+                this.isListening = true;
+                this.isRecovering = false;
               } catch (restartError) {
                 console.error('Failed to restart speech recognition:', restartError);
-                if (this.onError) {
+                this.isRecovering = false;
+                if (this.onError && this.restartAttempts >= this.maxRestartAttempts) {
                   this.onError('network-restart-failed');
                 }
               }
+            } else {
+              this.isRecovering = false;
             }
-          }, this.restartDelay * this.restartAttempts);
-        } else if (this.onError) {
-          this.onError(event.error);
+          }, delay);
+        } else if (this.restartAttempts >= this.maxRestartAttempts) {
+          console.error('Max restart attempts reached for network errors');
+          this.autoRestart = false;
+          if (this.onError) {
+            this.onError('network-max-retries-exceeded');
+          }
         }
       } else if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        this.autoRestart = false;
         if (this.onError) {
           this.onError('microphone-permission-denied');
         }
-      } else if (this.onError) {
-        this.onError(event.error);
+      } else if (event.error === 'aborted') {
+        console.log('Speech recognition aborted (expected)');
+      } else {
+        if (this.onError) {
+          this.onError(event.error);
+        }
       }
     };
 
     this.recognition.onend = () => {
       this.isListening = false;
-      if (this.autoRestart && this.restartAttempts < this.maxRestartAttempts) {
-        console.log('Speech recognition ended, auto-restarting...');
+
+      if (this.autoRestart && this.restartAttempts < this.maxRestartAttempts && !this.isRecovering) {
+        console.log('Speech recognition ended, attempting auto-restart...');
         setTimeout(() => {
-          if (this.autoRestart) {
+          if (this.autoRestart && !this.isListening) {
             try {
               this.recognition.start();
               this.isListening = true;
-            } catch (error) {
+              this.consecutiveNetworkErrors = 0;
+            } catch (error: any) {
               console.error('Failed to auto-restart speech recognition:', error);
+              if (error.message && error.message.includes('already started')) {
+                this.isListening = true;
+              }
             }
           }
-        }, 100);
+        }, 300);
       } else if (this.onEnd) {
         this.onEnd(this.transcript);
       }
@@ -158,6 +203,9 @@ export class SpeechRecognitionService {
     this.isListening = false;
     this.autoRestart = false;
     this.restartAttempts = 0;
+    this.consecutiveNetworkErrors = 0;
+    this.lastErrorTime = 0;
+    this.isRecovering = false;
     this.onTranscriptUpdate = undefined;
     this.onEnd = undefined;
     this.onError = undefined;

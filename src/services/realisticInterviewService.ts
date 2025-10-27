@@ -382,9 +382,10 @@ Make questions conversational and natural. Return ONLY a JSON array of strings.`
     config: InterviewConfig,
     resumeId: string
   ): Promise<string> {
-    const { data, error } = await supabase
-      .from('realistic_interview_sessions')
-      .insert({
+    try {
+      console.log('Creating realistic interview session for user:', userId);
+
+      const sessionData = {
         user_id: userId,
         session_type: config.sessionType,
         interview_category: config.interviewCategory,
@@ -394,12 +395,38 @@ Make questions conversational and natural. Return ONLY a JSON array of strings.`
         resume_id: resumeId,
         status: 'in_progress',
         started_at: new Date().toISOString()
-      })
-      .select()
-      .single();
+      };
 
-    if (error) throw error;
-    return data.id;
+      const { data, error } = await supabase
+        .from('realistic_interview_sessions')
+        .insert(sessionData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating interview session:', error);
+        throw new Error(`Failed to create interview session: ${error.message}`);
+      }
+
+      if (!data || !data.id) {
+        console.error('Session created but no ID returned:', data);
+        throw new Error('Session was created but no ID was returned');
+      }
+
+      console.log('Interview session created successfully with ID:', data.id);
+
+      localStorage.setItem(`interview_session_${data.id}`, JSON.stringify({
+        sessionId: data.id,
+        userId,
+        config,
+        createdAt: Date.now()
+      }));
+
+      return data.id;
+    } catch (error) {
+      console.error('Failed to create interview session:', error);
+      throw error;
+    }
   }
 
   async saveQuestionResponse(
@@ -407,21 +434,38 @@ Make questions conversational and natural. Return ONLY a JSON array of strings.`
     question: InterviewQuestion,
     response: QuestionResponse
   ): Promise<void> {
-    const { error } = await supabase
-      .from('realistic_interview_responses')
-      .insert({
-        session_id: sessionId,
-        question_number: question.question_number,
-        question_type: question.question_type,
-        question_text: question.question_text,
-        answer_text: response.answer_text,
-        code_answer: response.code_answer,
-        programming_language: response.programming_language,
-        time_spent_seconds: response.time_spent_seconds,
-        quality_score: response.quality_score
-      });
+    if (!sessionId) {
+      console.error('Cannot save response: sessionId is null or undefined');
+      throw new Error('Session ID is required to save response');
+    }
 
-    if (error) throw error;
+    try {
+      console.log('Saving response for session:', sessionId, 'question:', question.question_number);
+
+      const { error } = await supabase
+        .from('realistic_interview_responses')
+        .insert({
+          session_id: sessionId,
+          question_number: question.question_number,
+          question_type: question.question_type,
+          question_text: question.question_text,
+          answer_text: response.answer_text,
+          code_answer: response.code_answer,
+          programming_language: response.programming_language,
+          time_spent_seconds: response.time_spent_seconds,
+          quality_score: response.quality_score
+        });
+
+      if (error) {
+        console.error('Error saving question response:', error);
+        throw new Error(`Failed to save response: ${error.message}`);
+      }
+
+      console.log('Response saved successfully');
+    } catch (error) {
+      console.error('Failed to save question response:', error);
+      throw error;
+    }
   }
 
   async saveFollowUpResponse(
@@ -431,33 +475,69 @@ Make questions conversational and natural. Return ONLY a JSON array of strings.`
     answer: string,
     timeSpent: number
   ): Promise<void> {
-    const { error } = await supabase
-      .from('realistic_interview_followups')
-      .insert({
-        session_id: sessionId,
-        parent_question_number: parentQuestionNumber,
-        follow_up_question: followUpQuestion,
-        answer: answer,
-        time_spent_seconds: timeSpent
-      });
+    if (!sessionId) {
+      console.error('Cannot save follow-up: sessionId is null or undefined');
+      throw new Error('Session ID is required to save follow-up response');
+    }
 
-    if (error) throw error;
+    try {
+      console.log('Saving follow-up response for session:', sessionId);
+
+      const { error } = await supabase
+        .from('realistic_interview_followups')
+        .insert({
+          session_id: sessionId,
+          parent_question_number: parentQuestionNumber,
+          follow_up_question: followUpQuestion,
+          answer: answer,
+          time_spent_seconds: timeSpent
+        });
+
+      if (error) {
+        console.error('Error saving follow-up response:', error);
+        throw new Error(`Failed to save follow-up: ${error.message}`);
+      }
+
+      console.log('Follow-up response saved successfully');
+    } catch (error) {
+      console.error('Failed to save follow-up response:', error);
+      throw error;
+    }
   }
 
   async completeSession(
     sessionId: string,
     actualDurationSeconds: number
   ): Promise<void> {
-    const { error } = await supabase
-      .from('realistic_interview_sessions')
-      .update({
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-        actual_duration_seconds: actualDurationSeconds
-      })
-      .eq('id', sessionId);
+    if (!sessionId) {
+      console.error('Cannot complete session: sessionId is null or undefined');
+      throw new Error('Session ID is required to complete session');
+    }
 
-    if (error) throw error;
+    try {
+      console.log('Completing interview session:', sessionId);
+
+      const { error } = await supabase
+        .from('realistic_interview_sessions')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          actual_duration_seconds: actualDurationSeconds
+        })
+        .eq('id', sessionId);
+
+      if (error) {
+        console.error('Error completing session:', error);
+        throw new Error(`Failed to complete session: ${error.message}`);
+      }
+
+      console.log('Session completed successfully');
+
+      localStorage.removeItem(`interview_session_${sessionId}`);
+    } catch (error) {
+      console.error('Failed to complete session:', error);
+      throw error;
+    }
   }
 }
 
