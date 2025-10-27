@@ -79,7 +79,8 @@ const profileRole = data.user.user_metadata?.role || (isAdmin ? 'admin' : 'clien
       isVerified: data.user.email_confirmed_at !== null,
       createdAt: data.user.created_at || new Date().toISOString(),
       lastLogin: new Date().toISOString(),
-      role: isAdmin ? 'admin' : 'client',
+    role: profileRole as 'admin' | 'client',
+
     };
     console.log('AuthService: Login process completed. Returning minimal user data.');
     return userResult;
