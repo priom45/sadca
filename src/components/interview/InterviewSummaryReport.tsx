@@ -3,6 +3,7 @@ import { Trophy, TrendingUp, Lightbulb, RotateCcw, Home, Download, Share2, Shiel
 import { interviewService } from '../../services/interviewService';
 import { interviewFeedbackService } from '../../services/interviewFeedbackService';
 import { InterviewSessionWithQuestions, AIFeedback } from '../../types/interview';
+import { supabase } from '../../lib/supabaseClient';
 
 interface InterviewSummaryReportProps {
   sessionId: string;
@@ -36,7 +37,87 @@ export const InterviewSummaryReport: React.FC<InterviewSummaryReportProps> = ({
         return;
       }
 
-      const data = await interviewService.getSessionWithDetails(sessionId);
+      // Try legacy/mock session first
+      let data = await interviewService.getSessionWithDetails(sessionId);
+
+      // Fallback: try realistic interview tables
+      if (!data) {
+        try {
+          const { data: realSession, error: realErr } = await supabase
+            .from('realistic_interview_sessions')
+            .select('*')
+            .eq('id', sessionId)
+            .maybeSingle();
+
+          if (realErr) throw realErr;
+
+          if (realSession) {
+            const { data: realResponses, error: respErr } = await supabase
+              .from('realistic_interview_responses')
+              .select('*')
+              .eq('session_id', sessionId)
+              .order('question_number', { ascending: true });
+
+            if (respErr) throw respErr;
+
+            // Shape into InterviewSessionWithQuestions-like object
+            const questions = (realResponses || []).map((r: any, idx: number) => ({
+              id: `realistic-${idx + 1}`,
+              question_text: r.question_text || `Question ${idx + 1}`,
+              // Provide safe defaults so UI doesn't show undefined text
+              category: (r.question_type || 'Technical') as any,
+              difficulty: 'Medium' as any,
+              interview_type: 'general' as any,
+              is_active: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }));
+
+            data = {
+              // Map common fields used by the UI
+              id: realSession.id,
+              user_id: realSession.user_id,
+              session_type: (realSession.session_type || 'general') as any,
+              interview_category: (realSession.interview_category || 'mixed') as any,
+              duration_minutes: realSession.duration_minutes || Math.ceil((realSession.actual_duration_seconds || 0) / 60),
+              actual_duration_seconds: realSession.actual_duration_seconds,
+              overall_score: realSession.overall_score,
+              status: realSession.status as any,
+              started_at: realSession.started_at,
+              completed_at: realSession.completed_at,
+              created_at: realSession.created_at,
+              updated_at: realSession.updated_at,
+              tab_switches_count: realSession.tab_switches_count,
+              fullscreen_exits_count: realSession.fullscreen_exits_count,
+              total_violation_time: realSession.total_violation_time,
+              violations_log: realSession.violations_log,
+              security_score: realSession.security_score,
+              questions,
+              responses: (realResponses || []).map((r: any, idx: number) => ({
+                id: r.id,
+                session_id: r.session_id,
+                question_id: questions[idx]?.id || `realistic-${idx + 1}`,
+                question_order: r.question_number || idx + 1,
+                user_answer_text: r.answer_text || r.code_answer || '',
+                audio_url: undefined,
+                video_url: undefined,
+                audio_transcript: undefined,
+                // Map any AI feedback if it exists in a compatible shape
+                ai_feedback_json: r.ai_feedback_json as any,
+                individual_score: r.quality_score || r.score || 0,
+                tone_rating: undefined,
+                confidence_rating: undefined,
+                response_duration_seconds: r.time_spent_seconds || undefined,
+                created_at: r.created_at,
+                updated_at: r.updated_at
+              }))
+            } as unknown as InterviewSessionWithQuestions;
+          }
+        } catch (fallbackErr) {
+          console.error('Fallback realistic session lookup failed:', fallbackErr);
+        }
+      }
+
       if (!data) {
         console.error('Session not found for ID:', sessionId);
         setLoading(false);
@@ -312,14 +393,21 @@ export const InterviewSummaryReport: React.FC<InterviewSummaryReportProps> = ({
                     <div key={response.id} className="bg-secondary-50 dark:bg-dark-300 rounded-xl p-6 border border-secondary-200 dark:border-dark-400">
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="bg-blue-500 text-white px-2 py-1 rounded text-sm font-semibold">
-                              Q{idx + 1}
-                            </span>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="bg-blue-500 text-white px-2 py-1 rounded text-sm font-semibold">
+                          Q{idx + 1}
+                        </span>
+                        {(() => {
+                          const meta: string[] = [];
+                          if (question?.category) meta.push(String(question.category));
+                          if (question?.difficulty) meta.push(String(question.difficulty));
+                          return meta.length > 0 ? (
                             <span className="text-xs text-secondary-600 dark:text-gray-400">
-                              {question?.category} • {question?.difficulty}
+                              {meta.join(' • ')}
                             </span>
-                          </div>
+                          ) : null;
+                        })()}
+                      </div>
                           <p className="font-semibold text-secondary-900 dark:text-gray-100 mb-2">
                             {question?.question_text}
                           </p>
