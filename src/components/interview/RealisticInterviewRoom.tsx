@@ -1003,7 +1003,7 @@ export const RealisticInterviewRoom: React.FC<RealisticInterviewRoomProps> = ({
       />
 
       <div className="flex-1 mt-20 pt-8 pb-20">
-        <div className="max-w-7xl mx-auto px-4 grid lg:grid-cols-[280px_1fr_320px] gap-6 h-full">
+          <div className="max-w-7xl mx-auto px-2 md:px-4 grid lg:grid-cols-[280px_1fr_320px] gap-6 h-full">
           <div className="bg-dark-200 rounded-xl p-6 flex items-center justify-center">
             <div className="text-center">
               <div className={`w-32 h-32 rounded-full mx-auto mb-4 flex items-center justify-center transition-all ${
@@ -1234,7 +1234,7 @@ export const RealisticInterviewRoom: React.FC<RealisticInterviewRoomProps> = ({
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-dark-200 border-t border-dark-300 py-3">
-        <div className="max-w-7xl mx-auto px-4 text-center text-sm text-gray-400">
+        <div className="max-w-7xl mx-auto px-2 md:px-4 text-center text-sm text-gray-400">
           {stage === 'listening' ? 'Listening to your answer...' :
            stage === 'processing' ? 'Processing your answer...' :
            stage === 'question' ? 'AI is asking the question...' :
