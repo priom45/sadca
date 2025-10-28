@@ -71,7 +71,7 @@ export const ApplicationMethodModal: React.FC<ApplicationMethodModalProps> = ({
         title: 'Optimize Resume with AI',
         subtitle: 'Boost your shortlist chances',
         description:
-          'Let PrimoBoost AI tailor your resume specifically for this opening. We rewrite bullets, surface metrics, and align keywords recruiters are searching for.',
+          ',
         highlights: [
           `ATS-ready formatting tuned for ${job.domain} roles`,
           `Keyword alignment with the ${job.role_title} job description`,
