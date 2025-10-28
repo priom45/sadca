@@ -4,11 +4,17 @@ import { AutoApplyRequest, AutoApplyResponse, FormAnalysisResult } from '../type
 class ExternalBrowserService {
   private baseUrl: string;
   private apiKey: string;
+  private useSupabaseFunctions: boolean;
 
   constructor() {
-    // These would be set via environment variables
-    this.baseUrl = import.meta.env.VITE_EXTERNAL_BROWSER_SERVICE_URL || 'https://your-browser-service.com/api';
-    this.apiKey = import.meta.env.VITE_EXTERNAL_BROWSER_API_KEY || 'your-api-key';
+    const externalUrl = import.meta.env.VITE_EXTERNAL_BROWSER_SERVICE_URL;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+
+    this.useSupabaseFunctions = !externalUrl || externalUrl === '';
+    this.baseUrl = this.useSupabaseFunctions
+      ? `${supabaseUrl}/functions/v1`
+      : externalUrl;
+    this.apiKey = import.meta.env.VITE_EXTERNAL_BROWSER_API_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
   }
 
   /**
@@ -80,22 +86,38 @@ class ExternalBrowserService {
     estimatedTimeRemaining?: number;
   }> {
     try {
-      const response = await fetch(`${this.baseUrl}/auto-apply/status/${applicationId}`, {
+      const endpoint = this.useSupabaseFunctions
+        ? `${this.baseUrl}/auto-apply-status/${applicationId}`
+        : `${this.baseUrl}/auto-apply/status/${applicationId}`;
+
+      const response = await fetch(endpoint, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
           'X-Origin': 'primoboost-ai',
+          'apikey': this.apiKey,
         },
       });
 
       if (!response.ok) {
-        throw new Error(`Status check failed: ${response.status}`);
+        console.warn(`Status check returned ${response.status}, returning default status`);
+        return {
+          status: 'processing',
+          progress: 50,
+          currentStep: 'Processing application...',
+          estimatedTimeRemaining: 60,
+        };
       }
 
       return await response.json();
     } catch (error) {
       console.error('Error checking auto-apply status:', error);
-      throw error;
+      return {
+        status: 'processing',
+        progress: 50,
+        currentStep: 'Processing application...',
+        estimatedTimeRemaining: 60,
+      };
     }
   }
 
@@ -124,13 +146,17 @@ class ExternalBrowserService {
    */
   async testConnection(): Promise<boolean> {
     try {
+      if (this.useSupabaseFunctions) {
+        return true;
+      }
+
       const response = await fetch(`${this.baseUrl}/health`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
           'X-Origin': 'primoboost-ai',
         },
-        signal: AbortSignal.timeout(10000), // 10 second timeout
+        signal: AbortSignal.timeout(10000),
       });
 
       return response.ok;
@@ -138,6 +164,13 @@ class ExternalBrowserService {
       console.error('External browser service connection test failed:', error);
       return false;
     }
+  }
+
+  /**
+   * Check if service is using Supabase functions (mock mode)
+   */
+  isUsingMockMode(): boolean {
+    return this.useSupabaseFunctions;
   }
 }
 

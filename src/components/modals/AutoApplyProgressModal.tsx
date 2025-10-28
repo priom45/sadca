@@ -1,6 +1,6 @@
 // src/components/modals/AutoApplyProgressModal.tsx
 import React, { useState, useEffect } from 'react';
-import { X, Loader2, CheckCircle, AlertCircle, Eye, Download, ExternalLink, Clock, Zap } from 'lucide-react';
+import { X, Loader2, CheckCircle, AlertCircle, Eye, Download, ExternalLink, Clock, Zap, Sparkles } from 'lucide-react';
 import { AutoApplyResponse } from '../../types/autoApply';
 import { externalBrowserService } from '../../services/externalBrowserService';
 
@@ -30,33 +30,57 @@ export const AutoApplyProgressModal: React.FC<AutoApplyProgressModalProps> = ({
   useEffect(() => {
     if (!isOpen || !applicationId) return;
 
+    let pollCount = 0;
+    const maxPolls = 60;
+
     const pollStatus = async () => {
       try {
+        pollCount++;
+
+        if (pollCount > maxPolls) {
+          setStatus('failed');
+          setError('Application timeout - please try again or apply manually');
+          clearInterval(intervalId);
+          return;
+        }
+
         const statusInfo = await externalBrowserService.getAutoApplyStatus(applicationId);
         setStatus(statusInfo.status);
         setProgress(statusInfo.progress || 0);
         setCurrentStep(statusInfo.currentStep || 'Processing...');
 
-        if (statusInfo.status === 'completed' || statusInfo.status === 'failed') {
-          // Fetch final result
-          // This would typically come from your Edge Function or be passed directly
+        if (statusInfo.status === 'completed') {
+          setResult({
+            success: true,
+            message: 'Application submitted successfully!',
+            status: 'submitted',
+            screenshotUrl: statusInfo.screenshotUrl,
+          });
+          clearInterval(intervalId);
+          if (onComplete) {
+            onComplete({
+              success: true,
+              message: 'Application submitted successfully!',
+              status: 'submitted',
+            });
+          }
+        } else if (statusInfo.status === 'failed') {
+          setError(statusInfo.errorMessage || 'Application submission failed');
           clearInterval(intervalId);
         }
       } catch (err) {
         console.error('Error polling auto-apply status:', err);
-        setError('Failed to get application status');
-        clearInterval(intervalId);
+        if (pollCount > 3) {
+          setError('Unable to get application status. Your application may still be processing.');
+        }
       }
     };
 
-    // Poll every 2 seconds
     const intervalId = setInterval(pollStatus, 2000);
-    
-    // Initial poll
     pollStatus();
 
     return () => clearInterval(intervalId);
-  }, [isOpen, applicationId]);
+  }, [isOpen, applicationId, onComplete]);
 
   const handleCancel = async () => {
     if (applicationId && status === 'processing') {
@@ -176,12 +200,25 @@ export const AutoApplyProgressModal: React.FC<AutoApplyProgressModalProps> = ({
             ))}
           </div>
 
+          {/* Mock Mode Warning */}
+          {externalBrowserService.isUsingMockMode() && status === 'processing' && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 dark:bg-blue-900/20 dark:border-blue-500/50">
+              <h3 className="font-semibold text-blue-800 dark:text-blue-300 mb-2 flex items-center space-x-2">
+                <Sparkles className="w-4 h-4" />
+                <span>Demo Mode</span>
+              </h3>
+              <p className="text-blue-700 dark:text-blue-400 text-xs">
+                External browser service not configured. Using simulation mode for demonstration.
+              </p>
+            </div>
+          )}
+
           {/* Results */}
           {status === 'completed' && result && (
             <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 dark:bg-green-900/20 dark:border-green-500/50">
               <h3 className="font-semibold text-green-800 dark:text-green-300 mb-2">Application Successful!</h3>
               <p className="text-green-700 dark:text-green-400 text-sm mb-3">{result.message}</p>
-              
+
               <div className="flex flex-wrap gap-2">
                 {result.screenshotUrl && (
                   <a
@@ -194,7 +231,7 @@ export const AutoApplyProgressModal: React.FC<AutoApplyProgressModalProps> = ({
                     <span>View Screenshot</span>
                   </a>
                 )}
-                
+
                 {result.redirectUrl && (
                   <a
                     href={result.redirectUrl}
@@ -216,8 +253,8 @@ export const AutoApplyProgressModal: React.FC<AutoApplyProgressModalProps> = ({
               <p className="text-red-700 dark:text-red-400 text-sm mb-3">
                 {error || 'The automated application process encountered an error.'}
               </p>
-              <p className="text-red-600 dark:text-red-400 text-xs">
-                You can try applying manually using the job's application link.
+              <p className="text-red-600 dark:text-red-400 text-xs mb-3">
+                Don't worry! You can still apply manually using the job's application link.
               </p>
             </div>
           )}
@@ -232,8 +269,29 @@ export const AutoApplyProgressModal: React.FC<AutoApplyProgressModalProps> = ({
                 Cancel Application
               </button>
             )}
-            
-            {(status === 'completed' || status === 'failed') && (
+
+            {status === 'failed' && (
+              <>
+                <button
+                  onClick={() => {
+                    const searchQuery = encodeURIComponent(`${jobTitle} ${companyName} jobs apply`);
+                    window.open(`https://www.google.com/search?q=${searchQuery}`, '_blank');
+                  }}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl transition-colors flex items-center justify-center space-x-2"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  <span>Apply Manually</span>
+                </button>
+                <button
+                  onClick={onClose}
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-semibold py-3 px-4 rounded-xl transition-colors"
+                >
+                  Close
+                </button>
+              </>
+            )}
+
+            {status === 'completed' && (
               <button
                 onClick={onClose}
                 className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-semibold py-3 px-4 rounded-xl transition-colors"
