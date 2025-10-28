@@ -44,8 +44,6 @@ export const JobDetailsPageNew: React.FC<JobDetailsPageProps> = ({ onShowAuth })
   const [showApplicationModal, setShowApplicationModal] = useState(false);
   const [copiedReferralCode, setCopiedReferralCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [showFloatingButton, setShowFloatingButton] = useState(false);
-
   const eligibleYearTags = useMemo(() => {
     if (!job?.eligible_years) return [];
 
@@ -86,18 +84,6 @@ export const JobDetailsPageNew: React.FC<JobDetailsPageProps> = ({ onShowAuth })
 
     fetchJob();
   }, [jobId, navigate]);
-
-  // Show floating button when user scrolls down
-  useEffect(() => {
-    const handleScroll = () => {
-      const scrollPosition = window.scrollY;
-      // Show button after scrolling 300px
-      setShowFloatingButton(scrollPosition > 300);
-    };
-
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
 
   const handleApplyClick = () => {
     // Always open the method modal (mobile and desktop)
@@ -262,7 +248,7 @@ export const JobDetailsPageNew: React.FC<JobDetailsPageProps> = ({ onShowAuth })
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-dark-50 dark:to-dark-200 transition-colors duration-300">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-dark-50 dark:to-dark-200 transition-colors duration-300 pb-24 lg:pb-8">
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         {/* Breadcrumb + Share */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
@@ -373,7 +359,7 @@ export const JobDetailsPageNew: React.FC<JobDetailsPageProps> = ({ onShowAuth })
                 </div>
               </div>
 
-              {/* Key Info */}
+              {/* Key Info - Modified to remove conditional button */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6 border-t border-gray-200 dark:border-dark-300">
                 <div className="flex items-center space-x-3">
                   <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg">
@@ -414,8 +400,8 @@ export const JobDetailsPageNew: React.FC<JobDetailsPageProps> = ({ onShowAuth })
                 )}
               </div>
 
-              {/* Apply Button - Visible in Main Content (Mobile & Desktop) */}
-              <div className="mt-6">
+              {/* Apply Button - Now Always Visible on Desktop */}
+              <div className="mt-6 hidden lg:block">
                 <button
                   onClick={handleApplyClick}
                   className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center space-x-2"
@@ -623,7 +609,7 @@ export const JobDetailsPageNew: React.FC<JobDetailsPageProps> = ({ onShowAuth })
           {/* Right Column - Sticky Apply Card */}
           <div className="lg:col-span-1">
             <div className="sticky top-6 space-y-4">
-              {/* Apply Action Card */}
+              {/* Apply Action Card - NOW WITH BUTTON */}
               <div className="bg-white dark:bg-dark-100 rounded-2xl shadow-lg border border-gray-100 dark:border-dark-300 p-6">
                 <div className="text-center mb-4">
                   <div className="bg-gradient-to-r from-blue-600 to-purple-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -688,15 +674,11 @@ export const JobDetailsPageNew: React.FC<JobDetailsPageProps> = ({ onShowAuth })
         </div>
       </div>
 
-      {/* Floating Apply Button (Mobile Only) - Shows on scroll */}
-      <div 
-        className={`fixed bottom-4 left-4 right-4 lg:hidden z-50 transition-all duration-300 ${
-          showFloatingButton ? 'translate-y-0 opacity-100' : 'translate-y-24 opacity-0 pointer-events-none'
-        }`}
-      >
+      {/* Fixed Bottom Apply Button (Mobile Only) */}
+      <div className="fixed bottom-0 left-0 right-0 lg:hidden bg-white dark:bg-dark-100 border-t-2 border-gray-200 dark:border-dark-300 p-4 shadow-2xl z-40">
         <button
           onClick={handleApplyClick}
-          className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-4 px-6 rounded-xl shadow-2xl hover:shadow-xl flex items-center justify-center space-x-2 animate-bounce-subtle"
+          className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl flex items-center justify-center space-x-2"
         >
           <Briefcase className="w-5 h-5" />
           <span>Apply Now</span>
