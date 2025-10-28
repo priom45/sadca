@@ -248,7 +248,7 @@ export const JobDetailsPageNew: React.FC<JobDetailsPageProps> = ({ onShowAuth })
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-dark-50 dark:to-dark-200 transition-colors duration-300">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-dark-50 dark:to-dark-200 transition-colors duration-300 pb-24 lg:pb-8">
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         {/* Breadcrumb + Share */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
@@ -359,8 +359,8 @@ export const JobDetailsPageNew: React.FC<JobDetailsPageProps> = ({ onShowAuth })
                 </div>
               </div>
 
-              {/* Key Info */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-6 border-t border-gray-200 dark:border-dark-300">
+              {/* Key Info - Modified to remove conditional button */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6 border-t border-gray-200 dark:border-dark-300">
                 <div className="flex items-center space-x-3">
                   <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg">
                     <Clock className="w-5 h-5 text-blue-600 dark:text-blue-400" />
@@ -386,27 +386,29 @@ export const JobDetailsPageNew: React.FC<JobDetailsPageProps> = ({ onShowAuth })
                 </div>
 
                 {job.package_amount && job.package_type && (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="bg-purple-100 dark:bg-purple-900/30 p-2 rounded-lg">
-                        <Award className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Package</p>
-                        <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
-                          {formatSalary(job.package_amount, job.package_type)}
-                        </p>
-                      </div>
+                  <div className="flex items-center space-x-3 md:col-span-2">
+                    <div className="bg-purple-100 dark:bg-purple-900/30 p-2 rounded-lg">
+                      <Award className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                     </div>
-                    <button
-                      onClick={handleApplyClick}
-                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-2 px-4 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center space-x-2 text-sm"
-                    >
-                      <Briefcase className="w-4 h-4" />
-                      <span>Apply Now</span>
-                    </button>
+                    <div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Package</p>
+                      <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                        {formatSalary(job.package_amount, job.package_type)}
+                      </p>
+                    </div>
                   </div>
                 )}
+              </div>
+
+              {/* Apply Button - Now Always Visible on Desktop */}
+              <div className="mt-6 hidden lg:block">
+                <button
+                  onClick={handleApplyClick}
+                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center space-x-2"
+                >
+                  <Briefcase className="w-5 h-5" />
+                  <span>Apply Now</span>
+                </button>
               </div>
             </div>
 
@@ -607,19 +609,28 @@ export const JobDetailsPageNew: React.FC<JobDetailsPageProps> = ({ onShowAuth })
           {/* Right Column - Sticky Apply Card */}
           <div className="lg:col-span-1">
             <div className="sticky top-6 space-y-4">
-              {/* Apply Info Card */}
+              {/* Apply Action Card - NOW WITH BUTTON */}
               <div className="bg-white dark:bg-dark-100 rounded-2xl shadow-lg border border-gray-100 dark:border-dark-300 p-6">
-                <div className="text-center">
+                <div className="text-center mb-4">
                   <div className="bg-gradient-to-r from-blue-600 to-purple-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Sparkles className="w-8 h-8 text-white" />
                   </div>
                   <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-2">
                     Ready to Apply?
                   </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                     Choose between manual or AI-optimized application for better chances
                   </p>
                 </div>
+                
+                {/* Apply Button in Sidebar */}
+                <button
+                  onClick={handleApplyClick}
+                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center space-x-2"
+                >
+                  <Briefcase className="w-5 h-5" />
+                  <span>Apply Now</span>
+                </button>
               </div>
 
               {/* Quick Stats */}
@@ -661,6 +672,17 @@ export const JobDetailsPageNew: React.FC<JobDetailsPageProps> = ({ onShowAuth })
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Fixed Bottom Apply Button (Mobile Only) */}
+      <div className="fixed bottom-0 left-0 right-0 lg:hidden bg-white dark:bg-dark-100 border-t-2 border-gray-200 dark:border-dark-300 p-4 shadow-2xl z-40">
+        <button
+          onClick={handleApplyClick}
+          className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl flex items-center justify-center space-x-2"
+        >
+          <Briefcase className="w-5 h-5" />
+          <span>Apply Now</span>
+        </button>
       </div>
 
       {/* Application Method Modal */}
