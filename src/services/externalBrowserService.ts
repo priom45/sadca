@@ -1,20 +1,36 @@
 // src/services/externalBrowserService.ts
 import { AutoApplyRequest, AutoApplyResponse, FormAnalysisResult } from '../types/autoApply';
+import { browserlessService } from './browserlessService';
+import { detectPlatformStrategy, mapFormDataToFields } from './platformAutomationStrategies';
+
+export type AutomationMode = 'browserless' | 'external' | 'simulation';
 
 class ExternalBrowserService {
   private baseUrl: string;
   private apiKey: string;
-  private useSupabaseFunctions: boolean;
+  private automationMode: AutomationMode;
 
   constructor() {
     const externalUrl = import.meta.env.VITE_EXTERNAL_BROWSER_SERVICE_URL;
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const browserWs = import.meta.env.BROWSER_WS;
 
-    this.useSupabaseFunctions = !externalUrl || externalUrl === '';
-    this.baseUrl = this.useSupabaseFunctions
-      ? `${supabaseUrl}/functions/v1`
-      : externalUrl;
+    if (browserWs && browserlessService.isBrowserlessAvailable()) {
+      this.automationMode = 'browserless';
+      this.baseUrl = `${supabaseUrl}/functions/v1`;
+    } else if (externalUrl && externalUrl.length > 0) {
+      this.automationMode = 'external';
+      this.baseUrl = externalUrl;
+    } else {
+      this.automationMode = 'simulation';
+      this.baseUrl = `${supabaseUrl}/functions/v1`;
+    }
+
     this.apiKey = import.meta.env.VITE_EXTERNAL_BROWSER_API_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  }
+
+  getAutomationMode(): AutomationMode {
+    return this.automationMode;
   }
 
   /**
@@ -48,17 +64,26 @@ class ExternalBrowserService {
    */
   async submitAutoApply(request: AutoApplyRequest): Promise<AutoApplyResponse> {
     try {
-      console.log('ExternalBrowserService: Submitting auto-apply request...');
+      console.log(`ExternalBrowserService: Submitting auto-apply request in ${this.automationMode} mode...`);
 
-      const response = await fetch(`${this.baseUrl}/auto-apply`, {
+      if (this.automationMode === 'browserless') {
+        return await this.submitViaBrowserless(request);
+      }
+
+      const endpoint = this.automationMode === 'external'
+        ? `${this.baseUrl}/auto-apply`
+        : `${this.baseUrl}/auto-apply`;
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.apiKey}`,
           'X-Origin': 'primoboost-ai',
+          'X-Automation-Mode': this.automationMode,
         },
         body: JSON.stringify(request),
-        signal: AbortSignal.timeout(180000), // 3 minute timeout
+        signal: AbortSignal.timeout(180000),
       });
 
       if (!response.ok) {
@@ -73,6 +98,83 @@ class ExternalBrowserService {
     } catch (error) {
       console.error('Error in submitAutoApply:', error);
       throw error;
+    }
+  }
+
+  private async submitViaBrowserless(request: AutoApplyRequest): Promise<AutoApplyResponse> {
+    const startTime = Date.now();
+    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    try {
+      const platform = detectPlatformStrategy(request.applicationUrl).platform;
+      console.log(`Detected platform: ${platform}`);
+
+      const navResult = await browserlessService.navigateToApplication(request.applicationUrl);
+      if (!navResult.success) {
+        return {
+          success: false,
+          message: 'Failed to navigate to application page',
+          status: 'failed',
+          error: navResult.error,
+          processingTimeMs: Date.now() - startTime,
+        };
+      }
+
+      const fillResult = await browserlessService.fillApplicationForm(
+        request.applicationUrl,
+        request.userData
+      );
+
+      if (!fillResult.success) {
+        return {
+          success: false,
+          message: 'Failed to fill application form',
+          status: 'partial',
+          error: fillResult.error,
+          formFieldsFilled: fillResult.fieldsFilled,
+          screenshot: fillResult.screenshot,
+          processingTimeMs: Date.now() - startTime,
+        };
+      }
+
+      if (request.resumeFileUrl) {
+        const uploadResult = await browserlessService.uploadResume(
+          sessionId,
+          request.resumeFileUrl
+        );
+
+        if (!uploadResult.success) {
+          console.warn('Resume upload failed:', uploadResult.error);
+        }
+      }
+
+      const submitResult = await browserlessService.submitApplication(sessionId);
+
+      await browserlessService.closeBrowserSession(sessionId);
+
+      return {
+        success: submitResult.success,
+        message: submitResult.success
+          ? 'Application submitted successfully via Browserless automation'
+          : 'Application submission failed',
+        status: submitResult.success ? 'submitted' : 'failed',
+        screenshotUrl: submitResult.screenshot,
+        error: submitResult.error,
+        formFieldsFilled: fillResult.fieldsFilled,
+        applicationConfirmationText: submitResult.confirmationText,
+        redirectUrl: submitResult.redirectUrl,
+        processingTimeMs: Date.now() - startTime,
+      };
+    } catch (error: any) {
+      await browserlessService.closeBrowserSession(sessionId);
+
+      return {
+        success: false,
+        message: 'Browserless automation encountered an error',
+        status: 'failed',
+        error: error.message,
+        processingTimeMs: Date.now() - startTime,
+      };
     }
   }
 
@@ -167,10 +269,27 @@ class ExternalBrowserService {
   }
 
   /**
-   * Check if service is using Supabase functions (mock mode)
+   * Check if service is using mock/simulation mode
    */
   isUsingMockMode(): boolean {
-    return this.useSupabaseFunctions;
+    return this.automationMode === 'simulation';
+  }
+
+  /**
+   * Get detailed automation status
+   */
+  getAutomationStatus(): {
+    mode: AutomationMode;
+    isBrowserlessAvailable: boolean;
+    isExternalServiceConfigured: boolean;
+    isSimulationMode: boolean;
+  } {
+    return {
+      mode: this.automationMode,
+      isBrowserlessAvailable: browserlessService.isBrowserlessAvailable(),
+      isExternalServiceConfigured: !!import.meta.env.VITE_EXTERNAL_BROWSER_SERVICE_URL,
+      isSimulationMode: this.automationMode === 'simulation',
+    };
   }
 }
 
