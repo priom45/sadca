@@ -62,6 +62,17 @@ export const JobCard: React.FC<JobCardProps> = ({
     navigate(`/jobs/${job.id}`);
   };
 
+  const handleAutoApply = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isAuthenticated) {
+      onShowAuth();
+      return;
+    }
+    if (onAutoApply) {
+      onAutoApply(job);
+    }
+  };
+
   const skillTags = job.skills || [];
   const postedDaysAgo = Math.floor((Date.now() - new Date(job.posted_date).getTime()) / (1000 * 60 * 60 * 24));
 
@@ -219,14 +230,14 @@ export const JobCard: React.FC<JobCardProps> = ({
                 </span>
               </div>
 
-              {/* New Apply Buttons */}
+              {/* Apply Buttons */}
               <div className="flex items-center sm:space-x-2 gap-2 sm:gap-0">
                 <button
-                  disabled
-                  className="px-3 py-1 bg-gradient-to-r from-gray-200 to-gray-300 dark:from-dark-300 dark:to-dark-200 text-gray-600 dark:text-gray-400 rounded-lg text-xs font-semibold cursor-not-allowed w-auto"
-                  aria-disabled="true"
+                  onClick={handleAutoApply}
+                  className="px-3 py-1 bg-gradient-to-r from-green-600 to-emerald-600 dark:from-green-500 dark:to-emerald-500 text-white rounded-lg text-xs font-semibold hover:from-green-700 hover:to-emerald-700 shadow-md hover:shadow-lg transition-all duration-200 w-auto flex items-center space-x-1"
                 >
-                  Auto Apply (Soon)
+                  <Sparkles className="w-3 h-3" />
+                  <span>Auto Apply</span>
                 </button>
                 <button
                   onClick={handleManualApply}
