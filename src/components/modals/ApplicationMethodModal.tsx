@@ -71,7 +71,7 @@ export const ApplicationMethodModal: React.FC<ApplicationMethodModalProps> = ({
         title: 'Optimize Resume with AI',
         subtitle: 'Boost your shortlist chances',
         description:
-          '.',
+          '',
         highlights: [
           `ATS-ready formatting tuned for ${job.domain} roles`,
           `Keyword alignment with the ${job.role_title} job description`,
