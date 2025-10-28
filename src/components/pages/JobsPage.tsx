@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { JobListing, JobFilters, AutoApplyResult, OptimizedResume } from '../../types/jobs';
+import { JobListing, JobFilters, OptimizedResume } from '../../types/jobs';
 import { jobsService } from '../../services/jobsService';
 import { JobCard } from '../jobs/JobCard';
 import { JobFilters as JobFiltersComponent } from '../jobs/JobFilters';
@@ -25,8 +25,11 @@ import { ApplicationConfirmationModal } from '../modals/ApplicationConfirmationM
 import { AutoApplyProgressModal } from '../modals/AutoApplyProgressModal';
 import { Pagination } from '../common/Pagination';
 import { JobPreferencesOnboardingModal } from '../modals/JobPreferencesOnboardingModal';
+import { ProjectSuggestionModal } from '../modals/ProjectSuggestionModal';
 import { userPreferencesService } from '../../services/userPreferencesService';
 import { aiJobMatchingService } from '../../services/aiJobMatchingService';
+import { useAutoApply } from '../../hooks/useAutoApply';
+import { profileResumeService } from '../../services/profileResumeService';
 
 interface JobsPageProps {
   isAuthenticated: boolean;
@@ -62,9 +65,20 @@ export const JobsPage: React.FC<JobsPageProps> = ({
   const [showApplicationConfirmation, setShowApplicationConfirmation] = useState(false);
   const [selectedJob, setSelectedJob] = useState<JobListing | null>(null);
   const [selectedResume, setSelectedResume] = useState<OptimizedResume | null>(null);
-  const [applicationResult, setApplicationResult] = useState<AutoApplyResult | null>(null);
-  const [showAutoApplyProgress, setShowAutoApplyProgress] = useState(false);
-  const [autoApplyApplicationId, setAutoApplyApplicationId] = useState<string | null>(null);
+
+  // Auto-apply hook
+  const {
+    isProcessing: isAutoApplying,
+    showStatusModal,
+    showProjectModal,
+    currentStatus,
+    projectSuggestions,
+    currentJob: autoApplyJob,
+    result: autoApplyResult,
+    startAutoApply,
+    handleProjectSelection,
+    closeModals: closeAutoApplyModals,
+  } = useAutoApply();
 
   // AI Recommendations state
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -199,17 +213,30 @@ export const JobsPage: React.FC<JobsPageProps> = ({
     setShowResumePreview(true);
   };
 
-  const handleAutoApply = (job: JobListing, result: AutoApplyResult) => {
-    setSelectedJob(job);
-    setApplicationResult(result);
-    
-    // If the auto-apply is still in progress, show progress modal
-    if (result.status === 'pending' && result.applicationId) {
-      setAutoApplyApplicationId(result.applicationId);
-      setShowAutoApplyProgress(true);
-    } else {
-      // If completed (success or failure), show confirmation modal
-      setShowApplicationConfirmation(true);
+  const handleAutoApply = async (job: JobListing) => {
+    // Check if user has a resume uploaded
+    if (!user?.id) {
+      onShowAuth();
+      return;
+    }
+
+    try {
+      // Check if user has profile data
+      const hasResume = await profileResumeService.hasUserResume(user.id);
+      if (!hasResume) {
+        // Show profile completion modal
+        if (onShowProfile) {
+          onShowProfile('profile');
+        }
+        alert('Please upload your resume in your profile before using auto-apply.');
+        return;
+      }
+
+      // Start auto-apply process
+      await startAutoApply(job);
+    } catch (error) {
+      console.error('Error starting auto-apply:', error);
+      alert('Failed to start auto-apply. Please try again.');
     }
   };
 
@@ -218,18 +245,20 @@ export const JobsPage: React.FC<JobsPageProps> = ({
     if (selectedJob && selectedResume) {
       // Open job application link in new tab
       window.open(selectedJob.application_link, '_blank');
-      
-      // Show confirmation modal
-      setApplicationResult({
-        success: true,
-        message: 'Manual application initiated',
-        applicationId: selectedResume.id,
-        status: 'submitted',
-        resumeUrl: selectedResume.pdf_url
-      });
-      setShowApplicationConfirmation(true);
+
+      // Show success message
+      setSelectedJob(null);
+      setSelectedResume(null);
     }
   };
+
+  // Handle auto-apply completion
+  useEffect(() => {
+    if (autoApplyResult && !showStatusModal && !showProjectModal) {
+      setSelectedJob(autoApplyJob);
+      setShowApplicationConfirmation(true);
+    }
+  }, [autoApplyResult, showStatusModal, showProjectModal, autoApplyJob]);
 
   const stats = [
   { label: 'Total Jobs', value: total, icon: <Briefcase className="w-5 h-5" /> },
@@ -448,23 +477,42 @@ export const JobsPage: React.FC<JobsPageProps> = ({
 
       <ApplicationConfirmationModal
         isOpen={showApplicationConfirmation}
-        onClose={() => setShowApplicationConfirmation(false)}
+        onClose={() => {
+          setShowApplicationConfirmation(false);
+          setSelectedJob(null);
+          closeAutoApplyModals();
+        }}
         job={selectedJob}
-        result={applicationResult}
+        result={autoApplyResult ? {
+          success: autoApplyResult.success,
+          message: autoApplyResult.error || 'Application submitted successfully',
+          applicationId: autoApplyResult.applicationId || '',
+          status: autoApplyResult.success ? 'submitted' : 'failed',
+          resumeUrl: autoApplyResult.pdfUrl
+        } : undefined}
       />
 
       <AutoApplyProgressModal
-        isOpen={showAutoApplyProgress}
-        onClose={() => setShowAutoApplyProgress(false)}
-        applicationId={autoApplyApplicationId}
-        jobTitle={selectedJob?.role_title || ''}
-        companyName={selectedJob?.company_name || ''}
+        isOpen={showStatusModal}
+        onClose={() => closeAutoApplyModals()}
+        applicationId={autoApplyJob?.id || null}
+        jobTitle={autoApplyJob?.role_title || ''}
+        companyName={autoApplyJob?.company_name || ''}
         onComplete={(result) => {
-          setShowAutoApplyProgress(false);
-          setApplicationResult(result);
-          setShowApplicationConfirmation(true);
+          // Result is handled by the useAutoApply hook
         }}
       />
+
+      {showProjectModal && projectSuggestions && (
+        <ProjectSuggestionModal
+          isOpen={showProjectModal}
+          onClose={() => closeAutoApplyModals()}
+          job={autoApplyJob}
+          suggestions={projectSuggestions}
+          onSelectProject={handleProjectSelection}
+          matchScore={projectSuggestions.currentMatchScore || 0}
+        />
+      )}
 
       <JobPreferencesOnboardingModal
         isOpen={showOnboarding}

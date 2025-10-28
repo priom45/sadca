@@ -169,6 +169,29 @@ class ProfileResumeService {
     return resumeData;
   }
 
+  // Helper method to check if user has resume data
+  async hasUserResume(userId: string): Promise<boolean> {
+    const { data: profileData, error } = await supabase
+      .from('user_profiles')
+      .select('id, education_details, skills_details')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error || !profileData) {
+      return false;
+    }
+
+    // User has resume if they have at least education and skills
+    return !!(
+      profileData.education_details &&
+      Array.isArray(profileData.education_details) &&
+      profileData.education_details.length > 0 &&
+      profileData.skills_details &&
+      Array.isArray(profileData.skills_details) &&
+      profileData.skills_details.length > 0
+    );
+  }
+
   // Helper method to validate if profile is complete for auto-apply
   async isProfileCompleteForAutoApply(userId: string): Promise<{ isComplete: boolean; missingFields: string[] }> {
     const { data: profileData, error } = await supabase

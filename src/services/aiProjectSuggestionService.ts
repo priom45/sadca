@@ -1,4 +1,4 @@
-import { geminiService } from './geminiService';
+import { geminiService } from './geminiServiceWrapper';
 import { supabase } from '../lib/supabaseClient';
 
 export interface ProjectSuggestion {

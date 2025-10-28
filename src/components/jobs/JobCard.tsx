@@ -21,7 +21,7 @@ interface JobCardProps {
   isAuthenticated: boolean;
   onShowAuth: () => void;
   onManualApply?: (job: JobListing) => void;
-  onAutoApply?: (...args: any[]) => void;
+  onAutoApply?: (job: JobListing) => Promise<void>;
   onCompleteProfile?: () => void;
 }
 
@@ -62,14 +62,14 @@ export const JobCard: React.FC<JobCardProps> = ({
     navigate(`/jobs/${job.id}`);
   };
 
-  const handleAutoApply = (e: React.MouseEvent) => {
+  const handleAutoApply = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!isAuthenticated) {
       onShowAuth();
       return;
     }
     if (onAutoApply) {
-      onAutoApply(job);
+      await onAutoApply(job);
     }
   };
 
