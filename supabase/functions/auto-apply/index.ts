@@ -2,7 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-origin, x-automation-mode',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
@@ -181,66 +181,60 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[${new Date().toISOString()}] Payload prepared for external browser service`)
 
+    // Detect platform from application URL
+    let platformDetected = 'unknown'
+    const appUrl = job.application_link.toLowerCase()
+    if (appUrl.includes('linkedin')) platformDetected = 'linkedin'
+    else if (appUrl.includes('workday')) platformDetected = 'workday'
+    else if (appUrl.includes('naukri')) platformDetected = 'naukri'
+    else if (appUrl.includes('greenhouse')) platformDetected = 'greenhouse'
+    else if (appUrl.includes('lever')) platformDetected = 'lever'
+    else if (appUrl.includes('indeed')) platformDetected = 'indeed'
+
+    // Update log with platform detection
+    await supabase
+      .from('auto_apply_logs')
+      .update({
+        platform_detected: platformDetected,
+        automation_mode: 'headless'
+      })
+      .eq('id', autoApplyLogId)
+
     // Get external browser service URL from environment
     const externalServiceUrl = Deno.env.get('EXTERNAL_BROWSER_SERVICE_URL')
     const externalServiceApiKey = Deno.env.get('EXTERNAL_SERVICE_API_KEY')
-    
-    if (!externalServiceUrl) {
-      console.warn('EXTERNAL_BROWSER_SERVICE_URL not configured, simulating auto-apply...')
-      
-      // Simulate auto-apply process (for demo/development)
-      const simulatedSuccess = Math.random() > 0.3 // 70% success rate
-      
-      const simulatedResponse: ExternalBrowserServiceResponse = {
-        success: simulatedSuccess,
-        message: simulatedSuccess 
-          ? 'Application submitted successfully via automated process'
-          : 'Auto-apply failed - website may have changed or requires manual intervention',
-        status: simulatedSuccess ? 'submitted' : 'failed',
-        screenshotUrl: simulatedSuccess 
-          ? `https://example.com/screenshots/success_${autoApplyLogId}.png`
-          : undefined,
-        error: simulatedSuccess 
-          ? undefined 
-          : 'Simulated failure - form fields could not be automatically filled',
-        formFieldsFilled: simulatedSuccess ? {
-          'full_name': resumeContent.name,
-          'email': resumeContent.email,
-          'phone': resumeContent.phone,
-          'resume_file': 'uploaded'
-        } : undefined,
-        applicationConfirmationText: simulatedSuccess 
-          ? 'Thank you for your application. We will review and get back to you within 5-7 business days.'
-          : undefined
-      }
+    const browserWs = Deno.env.get('BROWSER_WS')
 
-      // Update auto apply log with simulated results
-      const { error: updateError } = await supabase
+    // Check if browserless automation is available
+    const hasBrowserless = !!browserWs && browserWs.length > 0
+    const hasExternalService = !!externalServiceUrl && externalServiceUrl.length > 0
+
+    if (!hasBrowserless && !hasExternalService) {
+      console.warn('No browser automation configured, returning error...')
+
+      // Update log as failed
+      await supabase
         .from('auto_apply_logs')
         .update({
-          status: simulatedResponse.status,
-          screenshot_url: simulatedResponse.screenshotUrl,
-          error_message: simulatedResponse.error,
+          status: 'failed',
+          error_message: 'Browser automation not configured. Please set up BROWSER_WS or EXTERNAL_BROWSER_SERVICE_URL environment variable.',
+          automation_mode: 'simulation'
         })
         .eq('id', autoApplyLogId)
 
-      if (updateError) {
-        console.error('Error updating auto apply log:', updateError)
-      }
-
       return new Response(
         JSON.stringify({
-          success: simulatedResponse.success,
-          message: simulatedResponse.message,
+          success: false,
+          message: 'Browser automation is not configured. Please contact support or apply manually.',
           applicationId: autoApplyLogId,
-          status: simulatedResponse.status,
-          screenshotUrl: simulatedResponse.screenshotUrl,
+          status: 'failed',
+          error: 'Browser automation service not available',
           resumeUrl: optimizedResume.pdf_url,
-          error: simulatedResponse.error
+          fallbackUrl: job.application_link
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: simulatedResponse.success ? 200 : 400,
+          status: 503,
         },
       )
     }

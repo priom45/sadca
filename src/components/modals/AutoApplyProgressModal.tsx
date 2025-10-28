@@ -200,15 +200,15 @@ export const AutoApplyProgressModal: React.FC<AutoApplyProgressModalProps> = ({
             ))}
           </div>
 
-          {/* Mock Mode Warning */}
+          {/* Automation Mode Info */}
           {externalBrowserService.isUsingMockMode() && status === 'processing' && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 dark:bg-blue-900/20 dark:border-blue-500/50">
-              <h3 className="font-semibold text-blue-800 dark:text-blue-300 mb-2 flex items-center space-x-2">
-                <Sparkles className="w-4 h-4" />
-                <span>Demo Mode</span>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4 dark:bg-amber-900/20 dark:border-amber-500/50">
+              <h3 className="font-semibold text-amber-800 dark:text-amber-300 mb-2 flex items-center space-x-2">
+                <Zap className="w-4 h-4" />
+                <span>Simulation Mode Active</span>
               </h3>
-              <p className="text-blue-700 dark:text-blue-400 text-xs">
-                External browser service not configured. Using simulation mode for demonstration.
+              <p className="text-amber-700 dark:text-amber-400 text-xs">
+                Browser automation is not configured. This is a simulated application process for demonstration purposes.
               </p>
             </div>
           )}

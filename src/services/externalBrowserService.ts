@@ -188,7 +188,7 @@ class ExternalBrowserService {
     estimatedTimeRemaining?: number;
   }> {
     try {
-      const endpoint = this.useSupabaseFunctions
+      const endpoint = this.automationMode === 'simulation'
         ? `${this.baseUrl}/auto-apply-status/${applicationId}`
         : `${this.baseUrl}/auto-apply/status/${applicationId}`;
 
@@ -248,7 +248,7 @@ class ExternalBrowserService {
    */
   async testConnection(): Promise<boolean> {
     try {
-      if (this.useSupabaseFunctions) {
+      if (this.automationMode === 'simulation') {
         return true;
       }
 
