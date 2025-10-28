@@ -22,9 +22,30 @@ Deno.serve(async (req: Request) => {
 
     if (!applicationId || applicationId === 'auto-apply-status') {
       return new Response(
-        JSON.stringify({ error: 'Application ID is required' }),
+        JSON.stringify({
+          status: 'not_found',
+          error: 'Application ID is required',
+          progress: 0,
+          currentStep: 'Invalid request',
+        }),
         {
-          status: 400,
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(applicationId)) {
+      return new Response(
+        JSON.stringify({
+          status: 'not_found',
+          error: 'Invalid application ID format',
+          progress: 0,
+          currentStep: 'Invalid ID format',
+        }),
+        {
+          status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
@@ -40,14 +61,33 @@ Deno.serve(async (req: Request) => {
       .eq('id', applicationId)
       .maybeSingle();
 
-    if (error || !autoApplyLog) {
+    if (error) {
+      console.error('Database error fetching auto_apply_log:', error);
       return new Response(
         JSON.stringify({
-          error: 'Application not found',
-          status: 'failed'
+          status: 'not_found',
+          error: 'Database error occurred',
+          progress: 0,
+          currentStep: 'Error checking status',
         }),
         {
-          status: 404,
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    if (!autoApplyLog) {
+      return new Response(
+        JSON.stringify({
+          status: 'not_found',
+          error: 'Application record not found',
+          progress: 0,
+          currentStep: 'Application not found',
+          applicationId: applicationId,
+        }),
+        {
+          status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
@@ -57,7 +97,7 @@ Deno.serve(async (req: Request) => {
     const now = Date.now();
     const elapsedSeconds = Math.floor((now - createdAt) / 1000);
 
-    let status: 'pending' | 'processing' | 'completed' | 'failed' = 'pending';
+    let status: 'pending' | 'processing' | 'completed' | 'failed' | 'not_found' = 'pending';
     let progress = 0;
     let currentStep = 'Initializing...';
     let estimatedTimeRemaining = 120;
@@ -113,6 +153,7 @@ Deno.serve(async (req: Request) => {
         jobId: autoApplyLog.job_listing_id,
         screenshotUrl: autoApplyLog.screenshot_url,
         errorMessage: autoApplyLog.error_message,
+        elapsedSeconds,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -122,11 +163,13 @@ Deno.serve(async (req: Request) => {
     console.error('Error in auto-apply-status:', error);
     return new Response(
       JSON.stringify({
-        status: 'failed',
+        status: 'not_found',
         error: error.message || 'Internal server error',
+        progress: 0,
+        currentStep: 'Error occurred',
       }),
       {
-        status: 500,
+        status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );

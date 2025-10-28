@@ -182,10 +182,13 @@ class ExternalBrowserService {
    * Gets the status of an ongoing auto-apply process
    */
   async getAutoApplyStatus(applicationId: string): Promise<{
-    status: 'pending' | 'processing' | 'completed' | 'failed';
+    status: 'pending' | 'processing' | 'completed' | 'failed' | 'not_found';
     progress?: number;
     currentStep?: string;
     estimatedTimeRemaining?: number;
+    screenshotUrl?: string;
+    errorMessage?: string;
+    elapsedSeconds?: number;
   }> {
     try {
       const endpoint = this.automationMode === 'simulation'
@@ -202,23 +205,29 @@ class ExternalBrowserService {
       });
 
       if (!response.ok) {
-        console.warn(`Status check returned ${response.status}, returning default status`);
+        console.warn(`Status check returned ${response.status}, returning not_found status`);
         return {
-          status: 'processing',
-          progress: 50,
-          currentStep: 'Processing application...',
-          estimatedTimeRemaining: 60,
+          status: 'not_found',
+          progress: 0,
+          currentStep: 'Application record not found',
+          estimatedTimeRemaining: 0,
         };
       }
 
-      return await response.json();
+      const result = await response.json();
+
+      if (result.status === 'not_found') {
+        console.warn(`Application ${applicationId} not found in database`);
+      }
+
+      return result;
     } catch (error) {
       console.error('Error checking auto-apply status:', error);
       return {
-        status: 'processing',
-        progress: 50,
-        currentStep: 'Processing application...',
-        estimatedTimeRemaining: 60,
+        status: 'not_found',
+        progress: 0,
+        currentStep: 'Unable to check status',
+        estimatedTimeRemaining: 0,
       };
     }
   }
