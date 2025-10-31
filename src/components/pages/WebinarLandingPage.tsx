@@ -122,40 +122,72 @@ export const WebinarLandingPage: React.FC = () => {
     setShowRegistrationModal(true);
   };
 
-  const handleRegistrationSubmit = async (e: React.FormEvent) => {
+   const handleRegistrationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!webinar || !user) return;
+    if (!webinar || !user) {
+      alert('Missing webinar or user information');
+      return;
+    }
+
+    // Validate webinar price
+    if (!webinar.discounted_price || webinar.discounted_price <= 0) {
+      alert('Invalid webinar price. Please contact support.');
+      console.error('Invalid webinar discounted_price:', webinar.discounted_price);
+      return;
+    }
 
     setIsProcessingPayment(true);
 
     try {
+      // Step 1: Create registration
+      console.log('Creating webinar registration...');
       const registration = await webinarService.createRegistration(
         webinar.id,
         user.id,
         registrationData
       );
+      console.log('Registration created:', registration.id);
 
-      const { data: orderData, error: orderError } = await supabase.functions.invoke('create-order', {
-        body: {
-          amount: webinar.discounted_price, // Amount in paise
-          currency: 'INR',
-          userId: user.id,
-          metadata: {
-            type: 'webinar',
-            webinarId: webinar.id,
-            registrationId: registration.id,
-            webinarTitle: webinar.title
-          }
+      // Step 2: Prepare payment order request
+      const orderRequestBody = {
+        amount: webinar.discounted_price, // Amount in paise
+        currency: 'INR',
+        userId: user.id,
+        metadata: {
+          type: 'webinar' as const,
+          webinarId: webinar.id,
+          registrationId: registration.id,
+          webinarTitle: webinar.title
         }
+      };
+
+      console.log('Creating payment order with body:', orderRequestBody);
+
+      // Step 3: Create payment order via Supabase function
+      const { data: orderData, error: orderError } = await supabase.functions.invoke('create-order', {
+        body: orderRequestBody
       });
 
-      if (orderError || !orderData) {
-        throw new Error('Failed to create payment order');
+      console.log('Order response:', { data: orderData, error: orderError });
+
+      if (orderError) {
+        console.error('Order error details:', orderError);
+        throw new Error(`Payment order error: ${orderError.message || JSON.stringify(orderError)}`);
       }
 
-      const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
+      if (!orderData || !orderData.orderId) {
+        console.error('Invalid order data received:', orderData);
+        throw new Error('Failed to create payment order - no order ID received');
+      }
 
+      // Step 4: Get Razorpay key
+      const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
+      if (!razorpayKey) {
+        throw new Error('Razorpay key not configured');
+      }
+
+      // Step 5: Initialize Razorpay payment
       const options = {
         key: razorpayKey,
         amount: webinar.discounted_price,
@@ -165,6 +197,8 @@ export const WebinarLandingPage: React.FC = () => {
         order_id: orderData.orderId,
         handler: async function (response: any) {
           try {
+            console.log('Payment successful, verifying...', response);
+            
             const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verify-payment', {
               body: {
                 razorpay_order_id: response.razorpay_order_id,
@@ -180,12 +214,11 @@ export const WebinarLandingPage: React.FC = () => {
             });
 
             if (verifyError || !verifyData?.verified) {
+              console.error('Payment verification failed:', verifyError);
               throw new Error('Payment verification failed');
             }
 
-            // Registration payment status is now updated by verify-payment function
-            // No need to call updateRegistrationPayment separately
-
+            // Send confirmation email
             const scheduledDate = new Date(webinar.scheduled_at);
             await supabase.functions.invoke('send-webinar-confirmation-email', {
               body: {
@@ -216,7 +249,7 @@ export const WebinarLandingPage: React.FC = () => {
           } catch (error) {
             console.error('Error verifying payment:', error);
             setIsProcessingPayment(false);
-            alert('Payment verification failed. Please contact support.');
+            alert('Payment verification failed. Please contact support with your payment details.');
           }
         },
         prefill: {
@@ -228,19 +261,24 @@ export const WebinarLandingPage: React.FC = () => {
         },
         modal: {
           ondismiss: function() {
+            console.log('Payment modal dismissed');
             setIsProcessingPayment(false);
           }
         }
       };
 
+      console.log('Opening Razorpay with options:', { ...options, key: 'HIDDEN' });
       const razorpay = new window.Razorpay(options);
       razorpay.open();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating registration:', error);
       setIsProcessingPayment(false);
-      alert('Failed to create registration. Please try again.');
+      
+      const errorMessage = error?.message || 'Failed to create registration. Please try again.';
+      alert(`Registration Error: ${errorMessage}`);
     }
   };
+
 
   if (loading) {
     return (
