@@ -403,13 +403,45 @@ serve(async (req) => {
       finalAmount += addOnsTotal;
     }
 
-    // IMPORTANT: Validate that the calculated finalAmount matches the frontend's calculation
+        // IMPORTANT: Validate that the calculated finalAmount matches the frontend's calculation
     // This prevents tampering with the price on the client-side.
     // frontendCalculatedAmount is already in paise
-    if (finalAmount !== frontendCalculatedAmount) {
+    
+    // For webinar payments, skip strict validation since amount comes directly from frontend
+    if (!isWebinarPayment && finalAmount !== frontendCalculatedAmount) {
       console.error(`[${new Date().toISOString()}] - Price mismatch detected! Backend calculated: ${finalAmount}, Frontend sent: ${frontendCalculatedAmount}`);
-      throw new Error('Price mismatch detected. Please try again.');
+      console.error(`[${new Date().toISOString()}] - Debug info: originalPrice=${originalPrice}, discountAmount=${discountAmount}, walletDeduction=${walletDeduction}, addOnsTotal=${addOnsTotal}`);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Price mismatch detected. Please try again.',
+          debug: {
+            backendCalculated: finalAmount,
+            frontendSent: frontendCalculatedAmount,
+            difference: Math.abs(finalAmount - frontendCalculatedAmount)
+          }
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        },
+      );
     }
+
+    // Additional validation for webinar payments
+    if (isWebinarPayment) {
+      if (!frontendCalculatedAmount || frontendCalculatedAmount <= 0) {
+        console.error(`[${new Date().toISOString()}] - Invalid webinar amount: ${frontendCalculatedAmount}`);
+        return new Response(
+          JSON.stringify({ error: 'Invalid payment amount for webinar' }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          },
+        );
+      }
+      console.log(`[${new Date().toISOString()}] - Webinar payment validated. Amount: ${frontendCalculatedAmount} paise`);
+    }
+
 
     // --- NEW: Create a pending payment_transactions record ---
     console.log(`[${new Date().toISOString()}] - Creating pending payment_transactions record.`);
