@@ -6,14 +6,23 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Update the interface to include selectedAddOns
+// Update the interface to include selectedAddOns and webinar metadata
 interface OrderRequest {
-  planId: string;
+  planId?: string;
   couponCode?: string;
   walletDeduction?: number; // In paise
   addOnsTotal?: number; // In paise
   amount: number; // In paise (frontend calculated grandTotal)
   selectedAddOns?: { [key: string]: number };
+  // Webinar-specific fields
+  metadata?: {
+    type?: 'webinar' | 'subscription';
+    webinarId?: string;
+    registrationId?: string;
+    webinarTitle?: string;
+  };
+  userId?: string;
+  currency?: string;
 }
 
 interface PlanConfig {
@@ -198,8 +207,8 @@ serve(async (req) => {
     // Retrieve addOnsTotal from the request body
     const body: OrderRequest = await req.json();
     // All amounts from frontend (amount, walletDeduction, addOnsTotal) are now in paise
-    const { planId, couponCode, walletDeduction, addOnsTotal, amount: frontendCalculatedAmount, selectedAddOns } = body;
-    console.log(`[${new Date().toISOString()}] - Request body parsed. planId: ${planId}, couponCode: ${couponCode}, walletDeduction: ${walletDeduction}, addOnsTotal: ${addOnsTotal}, frontendCalculatedAmount: ${frontendCalculatedAmount}, selectedAddOns: ${JSON.stringify(selectedAddOns)}`);
+    const { planId, couponCode, walletDeduction, addOnsTotal, amount: frontendCalculatedAmount, selectedAddOns, metadata } = body;
+    console.log(`[${new Date().toISOString()}] - Request body parsed. planId: ${planId}, couponCode: ${couponCode}, walletDeduction: ${walletDeduction}, addOnsTotal: ${addOnsTotal}, frontendCalculatedAmount: ${frontendCalculatedAmount}, selectedAddOns: ${JSON.stringify(selectedAddOns)}, metadata: ${JSON.stringify(metadata)}`);
 
     // Get user from auth header
     const authHeader = req.headers.get('authorization');
@@ -221,9 +230,32 @@ serve(async (req) => {
       throw new Error('Invalid user token');
     }
 
+    // Handle webinar payment flow
+    const isWebinarPayment = metadata?.type === 'webinar';
+
     // Get plan details
     let plan: PlanConfig;
-    if (planId === 'addon_only_purchase' || planId === null) {
+    if (isWebinarPayment) {
+      // For webinar payments, create a virtual plan from the amount
+      plan = {
+        id: 'webinar_payment',
+        name: metadata?.webinarTitle || 'Webinar Registration',
+        price: frontendCalculatedAmount / 100, // Convert paise to rupees
+        mrp: frontendCalculatedAmount / 100,
+        discountPercentage: 0,
+        duration: 'One-time Purchase',
+        optimizations: 0,
+        scoreChecks: 0,
+        linkedinMessages: 0,
+        guidedBuilds: 0,
+        durationInHours: 0,
+        tag: '',
+        tagColor: '',
+        gradient: '',
+        icon: '',
+        features: [],
+      };
+    } else if (planId === 'addon_only_purchase' || !planId) {
       plan = {
         id: 'addon_only_purchase',
         name: 'Add-on Only Purchase',
@@ -252,13 +284,14 @@ serve(async (req) => {
 
     // Calculate final amount based on plan price (all calculations in paise)
     // Ensure this line is at the top level of the try block
-    let originalPrice = (plan?.price || 0) * 100; // Convert to paise, or 0 if addon_only
+    let originalPrice = isWebinarPayment ? frontendCalculatedAmount : (plan?.price || 0) * 100; // Convert to paise, or use webinar amount
 
     let discountAmount = 0;
     let finalAmount = originalPrice;
     let appliedCoupon = null;
 
-    if (couponCode) {
+    // Skip coupon processing for webinar payments
+    if (couponCode && !isWebinarPayment) {
       const normalizedCoupon = couponCode.toLowerCase().trim();
 
       // Per-user coupon usage check (now applies to all non-empty coupon codes)
@@ -381,22 +414,34 @@ serve(async (req) => {
     // --- NEW: Create a pending payment_transactions record ---
     console.log(`[${new Date().toISOString()}] - Creating pending payment_transactions record.`);
     // All amounts for insert are now in paise (integers)
-    console.log(`[${new Date().toISOString()}] - Values for insert: user_id=${user.id}, plan_id=${planId}, status='pending', amount=${plan.price * 100}, currency='INR', coupon_code=${appliedCoupon}, discount_amount=${discountAmount}, final_amount=${finalAmount}`);
+    console.log(`[${new Date().toISOString()}] - Values for insert: user_id=${user.id}, plan_id=${planId}, status='pending', amount=${plan.price * 100}, currency='INR', coupon_code=${appliedCoupon}, discount_amount=${discountAmount}, final_amount=${finalAmount}, isWebinarPayment=${isWebinarPayment}`);
+
+    const transactionInsert: any = {
+      user_id: user.id,
+      plan_id: (isWebinarPayment || planId === 'addon_only_purchase') ? null : planId, // plan_id is text, not uuid
+      status: 'pending', // Initial status
+      amount: plan.price * 100, // Original plan price in paise
+      currency: 'INR', // Explicitly set currency as it's not nullable and has a default
+      coupon_code: appliedCoupon, // Save applied coupon code
+      discount_amount: discountAmount, // In paise
+      final_amount: finalAmount, // Final amount after discounts/wallet/addons (in paise)
+      purchase_type: isWebinarPayment ? 'webinar' : (planId === 'addon_only_purchase' ? 'addon_only' : (Object.keys(selectedAddOns || {}).length > 0 ? 'plan_with_addons' : 'plan')),
+      // payment_id and order_id will be updated by verify-payment function
+    };
+
+    // Add webinar-specific metadata if present
+    if (isWebinarPayment && metadata) {
+      transactionInsert.metadata = {
+        type: 'webinar',
+        webinarId: metadata.webinarId,
+        registrationId: metadata.registrationId,
+        webinarTitle: metadata.webinarTitle,
+      };
+    }
 
     const { data: transaction, error: transactionError } = await supabase
       .from('payment_transactions')
-      .insert({
-        user_id: user.id,
-        plan_id: planId === 'addon_only_purchase' ? null : planId, // plan_id is text, not uuid
-        status: 'pending', // Initial status
-        amount: plan.price * 100, // Original plan price in paise
-        currency: 'INR', // Explicitly set currency as it's not nullable and has a default
-        coupon_code: appliedCoupon, // Save applied coupon code
-        discount_amount: discountAmount, // In paise
-        final_amount: finalAmount, // Final amount after discounts/wallet/addons (in paise)
-        purchase_type: planId === 'addon_only_purchase' ? 'addon_only' : (Object.keys(selectedAddOns || {}).length > 0 ? 'plan_with_addons' : 'plan'),
-        // payment_id and order_id will be updated by verify-payment function
-      })
+      .insert(transactionInsert)
       .select('id') // Select the ID of the newly created row
       .single();
 
@@ -421,7 +466,7 @@ serve(async (req) => {
       currency: 'INR',
       receipt: `receipt_${Date.now()}`,
       notes: {
-        planId: planId,
+        planId: planId || 'webinar_payment',
         planName: plan.name,
         originalAmount: plan.price * 100, // Original plan price in paise
         couponCode: appliedCoupon,
@@ -430,6 +475,11 @@ serve(async (req) => {
         addOnsTotal: addOnsTotal || 0, // In paise
         transactionId: transactionId, // Pass the transactionId to Razorpay notes
         selectedAddOns: JSON.stringify(selectedAddOns || {}),
+        // Add webinar-specific metadata to Razorpay notes
+        paymentType: isWebinarPayment ? 'webinar' : 'subscription',
+        webinarId: metadata?.webinarId || '',
+        registrationId: metadata?.registrationId || '',
+        webinarTitle: metadata?.webinarTitle || '',
       },
     };
 

@@ -15,6 +15,12 @@ interface PaymentVerificationRequest {
   razorpay_payment_id: string;
   razorpay_signature: string;
   transactionId: string;
+  // Optional webinar-specific fields
+  metadata?: {
+    type?: 'webinar' | 'subscription';
+    webinarId?: string;
+    registrationId?: string;
+  };
 }
 
 // Interface for plan configuration
@@ -209,9 +215,11 @@ serve(async (req) => {
       razorpay_payment_id,
       razorpay_signature,
       transactionId,
+      metadata,
     } = requestBody;
     transactionIdFromRequest = transactionId;
-    console.log(`[${new Date().toISOString()}] - verify-payment received. transactionId: ${transactionIdFromRequest}`);
+    const isWebinarPayment = metadata?.type === 'webinar';
+    console.log(`[${new Date().toISOString()}] - verify-payment received. transactionId: ${transactionIdFromRequest}, isWebinarPayment: ${isWebinarPayment}`);
     console.log(`[${new Date().toISOString()}] - Request Body: ${JSON.stringify(requestBody)}`); // Added log
 
     // Get authorization header
@@ -283,7 +291,12 @@ serve(async (req) => {
     const walletDeduction = parseFloat(orderData.notes.walletDeduction || "0");
     const selectedAddOns = JSON.parse(orderData.notes.selectedAddOns || "{}");
 
-    console.log(`[${new Date().toISOString()}] - Retrieved from orderData.notes: planId=${planId}, couponCode=${couponCode}, walletDeduction=${walletDeduction}, selectedAddOns=${JSON.stringify(selectedAddOns)}`);
+    // Extract webinar-specific data from Razorpay notes
+    const paymentType = orderData.notes.paymentType || 'subscription';
+    const webinarId = orderData.notes.webinarId || metadata?.webinarId;
+    const registrationId = orderData.notes.registrationId || metadata?.registrationId;
+
+    console.log(`[${new Date().toISOString()}] - Retrieved from orderData.notes: planId=${planId}, couponCode=${couponCode}, walletDeduction=${walletDeduction}, selectedAddOns=${JSON.stringify(selectedAddOns)}, paymentType=${paymentType}, webinarId=${webinarId}, registrationId=${registrationId}`);
 
     // Update payment transaction status in Supabase
     console.log(`[${new Date().toISOString()}] - Attempting to update payment_transactions record with ID: ${transactionId}`);
@@ -354,8 +367,30 @@ serve(async (req) => {
       }
     }
 
-    // Handle plan subscription (if not an add-on only purchase)
-    if (planId && planId !== "addon_only_purchase") {
+    // Handle webinar payment completion
+    if (isWebinarPayment && webinarId && registrationId) {
+      console.log(`[${new Date().toISOString()}] - Processing webinar payment completion for registration: ${registrationId}`);
+
+      // Update webinar registration with payment status
+      const { error: updateRegistrationError } = await supabase
+        .from("webinar_registrations")
+        .update({
+          payment_status: 'completed',
+          transaction_id: transactionId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", registrationId);
+
+      if (updateRegistrationError) {
+        console.error(`[${new Date().toISOString()}] - Error updating webinar registration:`, updateRegistrationError);
+        throw new Error("Failed to update webinar registration payment status");
+      }
+
+      console.log(`[${new Date().toISOString()}] - Webinar registration updated successfully`);
+    }
+
+    // Handle plan subscription (if not an add-on only purchase and not a webinar payment)
+    if (planId && planId !== "addon_only_purchase" && !isWebinarPayment) {
       // Check for existing active subscription to upgrade it
       const { data: existingSubscription, error: existingSubError } = await supabase
         .from("subscriptions")
@@ -535,8 +570,10 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
+        verified: true,
         subscriptionId: subscriptionId,
-        message: "Payment verified and credits granted successfully",
+        transactionId: transactionId,
+        message: isWebinarPayment ? "Webinar payment verified successfully" : "Payment verified and credits granted successfully",
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

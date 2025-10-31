@@ -138,7 +138,7 @@ export const WebinarLandingPage: React.FC = () => {
 
       const { data: orderData, error: orderError } = await supabase.functions.invoke('create-order', {
         body: {
-          amount: webinar.discounted_price,
+          amount: webinar.discounted_price, // Amount in paise
           currency: 'INR',
           userId: user.id,
           metadata: {
@@ -167,10 +167,10 @@ export const WebinarLandingPage: React.FC = () => {
           try {
             const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verify-payment', {
               body: {
-                orderId: response.razorpay_order_id,
-                paymentId: response.razorpay_payment_id,
-                signature: response.razorpay_signature,
-                userId: user.id,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                transactionId: orderData.transactionId,
                 metadata: {
                   type: 'webinar',
                   webinarId: webinar.id,
@@ -183,11 +183,8 @@ export const WebinarLandingPage: React.FC = () => {
               throw new Error('Payment verification failed');
             }
 
-            await webinarService.updateRegistrationPayment(
-              registration.id,
-              verifyData.transactionId,
-              'completed'
-            );
+            // Registration payment status is now updated by verify-payment function
+            // No need to call updateRegistrationPayment separately
 
             const scheduledDate = new Date(webinar.scheduled_at);
             await supabase.functions.invoke('send-webinar-confirmation-email', {
