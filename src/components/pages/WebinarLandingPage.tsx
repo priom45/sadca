@@ -16,11 +16,19 @@ import {
   DollarSign,
   MapPin,
   GraduationCap,
-  Linkedin
+  Linkedin,
+  Loader2
 } from 'lucide-react';
 import { webinarService } from '../../services/webinarService';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabaseClient';
 import type { WebinarWithSpeakers, WebinarTestimonial } from '../../types/webinar';
+
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
 
 export const WebinarLandingPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -37,6 +45,7 @@ export const WebinarLandingPage: React.FC = () => {
     seconds: number;
   } | null>(null);
   const [showRegistrationModal, setShowRegistrationModal] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [registrationData, setRegistrationData] = useState({
     full_name: '',
     email: '',
@@ -118,6 +127,8 @@ export const WebinarLandingPage: React.FC = () => {
 
     if (!webinar || !user) return;
 
+    setIsProcessingPayment(true);
+
     try {
       const registration = await webinarService.createRegistration(
         webinar.id,
@@ -125,16 +136,111 @@ export const WebinarLandingPage: React.FC = () => {
         registrationData
       );
 
-      navigate('/payment', {
-        state: {
-          registrationId: registration.id,
-          webinarId: webinar.id,
+      const { data: orderData, error: orderError } = await supabase.functions.invoke('create-order', {
+        body: {
           amount: webinar.discounted_price,
-          type: 'webinar'
+          currency: 'INR',
+          userId: user.id,
+          metadata: {
+            type: 'webinar',
+            webinarId: webinar.id,
+            registrationId: registration.id,
+            webinarTitle: webinar.title
+          }
         }
       });
+
+      if (orderError || !orderData) {
+        throw new Error('Failed to create payment order');
+      }
+
+      const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
+
+      const options = {
+        key: razorpayKey,
+        amount: webinar.discounted_price,
+        currency: 'INR',
+        name: 'PrimoBoost AI',
+        description: webinar.title,
+        order_id: orderData.orderId,
+        handler: async function (response: any) {
+          try {
+            const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verify-payment', {
+              body: {
+                orderId: response.razorpay_order_id,
+                paymentId: response.razorpay_payment_id,
+                signature: response.razorpay_signature,
+                userId: user.id,
+                metadata: {
+                  type: 'webinar',
+                  webinarId: webinar.id,
+                  registrationId: registration.id
+                }
+              }
+            });
+
+            if (verifyError || !verifyData?.verified) {
+              throw new Error('Payment verification failed');
+            }
+
+            await webinarService.updateRegistrationPayment(
+              registration.id,
+              verifyData.transactionId,
+              'completed'
+            );
+
+            const scheduledDate = new Date(webinar.scheduled_at);
+            await supabase.functions.invoke('send-webinar-confirmation-email', {
+              body: {
+                registrationId: registration.id,
+                recipientEmail: registrationData.email,
+                recipientName: registrationData.full_name,
+                webinarTitle: webinar.title,
+                webinarDate: scheduledDate.toLocaleDateString('en-US', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                }),
+                webinarTime: scheduledDate.toLocaleTimeString('en-US', {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                }),
+                meetLink: webinar.meet_link,
+                duration: webinar.duration_minutes
+              }
+            });
+
+            setShowRegistrationModal(false);
+            setIsProcessingPayment(false);
+
+            alert('Registration successful! Check your email for the meeting link.');
+            navigate('/webinars');
+          } catch (error) {
+            console.error('Error verifying payment:', error);
+            setIsProcessingPayment(false);
+            alert('Payment verification failed. Please contact support.');
+          }
+        },
+        prefill: {
+          name: registrationData.full_name,
+          email: registrationData.email,
+        },
+        theme: {
+          color: '#667eea',
+        },
+        modal: {
+          ondismiss: function() {
+            setIsProcessingPayment(false);
+          }
+        }
+      };
+
+      const razorpay = new window.Razorpay(options);
+      razorpay.open();
     } catch (error) {
       console.error('Error creating registration:', error);
+      setIsProcessingPayment(false);
       alert('Failed to create registration. Please try again.');
     }
   };
@@ -604,15 +710,24 @@ export const WebinarLandingPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowRegistrationModal(false)}
-                  className="flex-1 px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  disabled={isProcessingPayment}
+                  className="flex-1 px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-colors font-semibold"
+                  disabled={isProcessingPayment}
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                 >
-                  Proceed to Payment
+                  {isProcessingPayment ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    'Proceed to Payment'
+                  )}
                 </button>
               </div>
             </form>
