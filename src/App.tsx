@@ -46,6 +46,8 @@ import { BlogPostPage } from './components/pages/BlogPostPage';
 import { AdminBlogPostsList } from './components/admin/AdminBlogPostsList';
 import { AdminBlogPostForm } from './components/admin/AdminBlogPostForm';
 import { AdminBlogCategoriesManager } from './components/admin/AdminBlogCategoriesManager';
+import { WebinarsPage } from './components/pages/WebinarsPage';
+import { WebinarLandingPage } from './components/pages/WebinarLandingPage';
 
 function App() {
   const { isAuthenticated, user, markProfilePromptSeen, isLoading } = useAuth();
@@ -498,6 +500,8 @@ const handleDiwaliCTAClick = useCallback(() => {
           />
           <Route path="/blog" element={<EnhancedBlogPage isAuthenticated={isAuthenticated} onShowAuth={() => setShowAuthModal(true)} />} />
           <Route path="/blog/:slug" element={<BlogPostPage />} />
+          <Route path="/webinars" element={<WebinarsPage />} />
+          <Route path="/webinar/:slug" element={<WebinarLandingPage />} />
           <Route
             path="/admin/blog"
             element={
