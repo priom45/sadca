@@ -22,7 +22,7 @@ import {
 import { webinarService } from '../../services/webinarService';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
-import type { WebinarWithSpeakers, WebinarTestimonial } from '../../types/webinar';
+import type { WebinarWithSpeakers, WebinarTestimonial, WebinarRegistration } from '../../types/webinar';
 
 declare global {
   interface Window {
@@ -61,6 +61,7 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
     branch: '',
     phone_number: ''
   });
+  const [existingRegistration, setExistingRegistration] = useState<WebinarRegistration | null>(null);
 
   useEffect(() => {
     loadWebinarData();
@@ -83,6 +84,20 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
       setPromoCode('');
     }
   }, [webinar]);
+
+  // Check if the current user has already registered for this webinar
+  useEffect(() => {
+    const checkRegistration = async () => {
+      if (!user || !webinar) return;
+      try {
+        const reg = await webinarService.checkUserRegistration(user.id, webinar.id);
+        setExistingRegistration(reg);
+      } catch (e) {
+        console.warn('Failed to check existing registration:', e);
+      }
+    };
+    checkRegistration();
+  }, [user, webinar]);
 
   const loadWebinarData = async () => {
     try {
@@ -503,6 +518,15 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
             )}
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-6 mb-8">
+              {existingRegistration && (
+                <div className="text-center">
+                  <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-full text-lg font-semibold shadow">
+                    <CheckCircle className="w-5 h-5" />
+                    Enrolled
+                  </div>
+                </div>
+              )}
+              {!existingRegistration && (
               <div className="text-center">
                 <div className="text-white/70 line-through text-2xl">
                   ₹{(webinar.original_price / 100).toFixed(0)}
@@ -514,20 +538,36 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
                   Save {discountPercentage}%
                 </div>
               </div>
+              )}
             </div>
 
-            <motion.button
-              onClick={handleRegisterClick}
-              className="group relative inline-flex items-center justify-center px-12 py-6 text-xl font-bold text-white bg-gradient-to-r from-pink-500 to-red-500 rounded-full overflow-hidden shadow-2xl transition-all duration-300 hover:shadow-pink-500/50 hover:scale-105"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <span className="relative z-10 flex items-center">
-                Join the Webinar Now
-                <ArrowRight className="ml-2 w-6 h-6 group-hover:translate-x-1 transition-transform" />
-              </span>
-              <div className="absolute inset-0 bg-gradient-to-r from-pink-600 to-red-600 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            </motion.button>
+            {existingRegistration ? (
+              <motion.button
+                onClick={() => navigate(`/webinar-details/${existingRegistration.id}`)}
+                className="group relative inline-flex items-center justify-center px-12 py-6 text-xl font-bold text-white bg-gradient-to-r from-blue-600 to-purple-600 rounded-full overflow-hidden shadow-2xl transition-all duration-300 hover:shadow-blue-500/50 hover:scale-105"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <span className="relative z-10 flex items-center">
+                  View Details
+                  <ArrowRight className="ml-2 w-6 h-6 group-hover:translate-x-1 transition-transform" />
+                </span>
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-700 to-purple-700 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              </motion.button>
+            ) : (
+              <motion.button
+                onClick={handleRegisterClick}
+                className="group relative inline-flex items-center justify-center px-12 py-6 text-xl font-bold text-white bg-gradient-to-r from-pink-500 to-red-500 rounded-full overflow-hidden shadow-2xl transition-all duration-300 hover:shadow-pink-500/50 hover:scale-105"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <span className="relative z-10 flex items-center">
+                  Join the Webinar Now
+                  <ArrowRight className="ml-2 w-6 h-6 group-hover:translate-x-1 transition-transform" />
+                </span>
+                <div className="absolute inset-0 bg-gradient-to-r from-pink-600 to-red-600 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              </motion.button>
+            )}
           </motion.div>
         </div>
       </section>
@@ -762,15 +802,35 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
             <p className="text-xl text-white/90 mb-8">
               Limited spots available. Secure your seat now!
             </p>
-            <motion.button
-              onClick={handleRegisterClick}
-              className="inline-flex items-center justify-center px-12 py-6 text-xl font-bold text-blue-600 bg-white rounded-full hover:bg-gray-100 transition-all duration-300 shadow-2xl hover:shadow-white/50 hover:scale-105"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              Reserve My Spot Now
-              <Zap className="ml-2 w-6 h-6" />
-            </motion.button>
+            {existingRegistration ? (
+              <div className="flex items-center justify-center gap-3">
+                <motion.button
+                  disabled
+                  className="inline-flex items-center justify-center px-12 py-6 text-xl font-bold text-blue-600 bg-white/70 rounded-full cursor-not-allowed opacity-70 transition-all duration-300 shadow-2xl"
+                  whileHover={{ scale: 1 }}
+                >
+                  Already Enrolled
+                </motion.button>
+                <motion.button
+                  onClick={() => navigate(`/webinar-details/${existingRegistration.id}`)}
+                  className="inline-flex items-center justify-center px-6 py-6 text-xl font-bold text-white bg-gradient-to-r from-blue-600 to-purple-600 rounded-full hover:from-blue-700 hover:to-purple-700 transition-all duration-300 shadow-2xl hover:scale-105"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  View Details
+                </motion.button>
+              </div>
+            ) : (
+              <motion.button
+                onClick={handleRegisterClick}
+                className="inline-flex items-center justify-center px-12 py-6 text-xl font-bold text-blue-600 bg-white rounded-full hover:bg-gray-100 transition-all duration-300 shadow-2xl hover:shadow-white/50 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                Reserve My Spot Now
+                <Zap className="ml-2 w-6 h-6" />
+              </motion.button>
+            )}
           </motion.div>
         </div>
       </section>
@@ -801,7 +861,7 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
                     type="text"
                     value={promoCode}
                     onChange={(e) => setPromoCode(e.target.value)}
-                    placeholder="Enter code e.g. PRIMO"
+                    placeholder="Enter code e.g. webinar"
                     className="flex-1 px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                   <button
