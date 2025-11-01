@@ -374,15 +374,17 @@ if (isWebinarPayment && webinarId && registrationId) {
   console.log(`[${new Date().toISOString()}] - Processing webinar payment completion for registration: ${registrationId}`);
 
   // Update webinar registration with payment status
+   // Update webinar registration with payment status
   const { error: updateRegistrationError } = await supabase
     .from("webinar_registrations")
     .update({
       payment_status: 'completed',
       registration_status: 'confirmed',
-      payment_transaction_id: transactionId,  // ← CORRECT FIELD NAME
+      payment_transaction_id: transactionId,  // FIXED: Changed from transaction_id
       updated_at: new Date().toISOString(),
     })
     .eq("id", registrationId);
+
 
 
   if (updateRegistrationError) {
