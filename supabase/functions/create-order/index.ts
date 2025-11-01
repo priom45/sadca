@@ -407,28 +407,28 @@ serve(async (req) => {
     // This prevents tampering with the price on the client-side.
     // frontendCalculatedAmount is already in paise
     
-    // For webinar payments, skip strict validation since amount comes directly from frontend
-    if (!isWebinarPayment && finalAmount !== frontendCalculatedAmount) {
-      console.error(`[${new Date().toISOString()}] - Price mismatch detected! Backend calculated: ${finalAmount}, Frontend sent: ${frontendCalculatedAmount}`);
-      console.error(`[${new Date().toISOString()}] - Debug info: originalPrice=${originalPrice}, discountAmount=${discountAmount}, walletDeduction=${walletDeduction}, addOnsTotal=${addOnsTotal}`);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Price mismatch detected. Please try again.',
-          debug: {
-            backendCalculated: finalAmount,
-            frontendSent: frontendCalculatedAmount,
-            difference: Math.abs(finalAmount - frontendCalculatedAmount)
-          }
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400,
-        },
-      );
-    }
-
-    // Additional validation for webinar payments
-    if (isWebinarPayment) {
+    // For webinar payments, skip strict validation and use frontend amount directly
+    if (!isWebinarPayment) {
+      if (finalAmount !== frontendCalculatedAmount) {
+        console.error(`[${new Date().toISOString()}] - Price mismatch detected! Backend calculated: ${finalAmount}, Frontend sent: ${frontendCalculatedAmount}`);
+        console.error(`[${new Date().toISOString()}] - Debug info: originalPrice=${originalPrice}, discountAmount=${discountAmount}, walletDeduction=${walletDeduction}, addOnsTotal=${addOnsTotal}`);
+        return new Response(
+          JSON.stringify({ 
+            error: 'Price mismatch detected. Please try again.',
+            debug: {
+              backendCalculated: finalAmount,
+              frontendSent: frontendCalculatedAmount,
+              difference: Math.abs(finalAmount - frontendCalculatedAmount)
+            }
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          },
+        );
+      }
+    } else {
+      // For webinar payments, validate amount is positive and use it directly
       if (!frontendCalculatedAmount || frontendCalculatedAmount <= 0) {
         console.error(`[${new Date().toISOString()}] - Invalid webinar amount: ${frontendCalculatedAmount}`);
         return new Response(
@@ -439,9 +439,10 @@ serve(async (req) => {
           },
         );
       }
+      // Use the frontend amount directly for webinars (no recalculation needed)
+      finalAmount = frontendCalculatedAmount;
       console.log(`[${new Date().toISOString()}] - Webinar payment validated. Amount: ${frontendCalculatedAmount} paise`);
     }
-
 
     // --- NEW: Create a pending payment_transactions record ---
     console.log(`[${new Date().toISOString()}] - Creating pending payment_transactions record.`);
