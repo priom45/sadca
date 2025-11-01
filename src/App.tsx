@@ -48,6 +48,10 @@ import { AdminBlogPostForm } from './components/admin/AdminBlogPostForm';
 import { AdminBlogCategoriesManager } from './components/admin/AdminBlogCategoriesManager';
 import { WebinarsPage } from './components/pages/WebinarsPage';
 import { WebinarLandingPage } from './components/pages/WebinarLandingPage';
+import { WebinarDetailsPage } from './components/pages/WebinarDetailsPage';
+
+import { MyWebinarsPage } from './components/pages/MyWebinarsPage';
+
 
 function App() {
   const { isAuthenticated, user, markProfilePromptSeen, isLoading } = useAuth();
@@ -466,6 +470,9 @@ const handleDiwaliCTAClick = useCallback(() => {
           <Route path="/jobs/:jobId/apply" element={<JobApplicationPage />} />
           <Route path="/jobs/:jobId/apply-form" element={<JobApplicationFormPage />} />
           <Route path="/jobs/applications" element={<MyApplicationsPage {...commonPageProps} />} />
+          <Route path="/webinar-details/:registrationId" element={<WebinarDetailsPage />} />
+
+          <Route path="/my-webinars" element={<MyWebinarsPage />} />
           <Route
             path="/admin/jobs"
             element={
