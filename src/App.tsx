@@ -1,6 +1,6 @@
 // src/App.tsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { Menu, X, Home, Info, BookOpen, Phone, FileText, LogIn, LogOut, User, Wallet, Briefcase, Crown } from 'lucide-react';
+import { Menu, X, Home, Info, BookOpen, Phone, FileText, LogIn, LogOut, User, Wallet, Briefcase, Crown, Sparkles } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { Header } from './components/Header';
 import { Navigation } from './components/navigation/Navigation';
@@ -569,6 +569,8 @@ const handleDiwaliCTAClick = useCallback(() => {
                       { id: '/', label: 'Home', icon: <Home className="w-5 h-5" /> },
                       { id: '/about', label: 'About Us', icon: <Info className="w-5 h-5" /> },
                       { id: '/blog', label: 'Blog', icon: <BookOpen className="w-5 h-5" /> },
+                      { id: '/webinars', label: 'Webinars', icon: <Sparkles className="w-5 h-5" /> },
+                      ...(isAuthenticated ? [{ id: '/my-webinars', label: 'My Webinars', icon: <Sparkles className="w-5 h-5" /> }] : []),
                       { id: '/careers', label: 'Careers', icon: <Briefcase className="w-5 h-5" /> },
                       { id: '/jobs', label: 'Explore Jobs', icon: <Briefcase className="w-5 h-5" /> },
                     ...((user?.role === 'admin' || user?.email === 'primoboostai@gmail.com') ? [{ id: '/admin/jobs', label: 'Admin Panel', icon: <Crown className="w-5 h-5" /> }] : []),
