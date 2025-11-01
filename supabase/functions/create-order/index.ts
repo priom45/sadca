@@ -6,15 +6,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Update the interface to include selectedAddOns and webinar metadata
 interface OrderRequest {
   planId?: string;
   couponCode?: string;
-  walletDeduction?: number; // In paise
-  addOnsTotal?: number; // In paise
-  amount: number; // In paise (frontend calculated grandTotal)
+  walletDeduction?: number;
+  addOnsTotal?: number;
+  amount: number;
   selectedAddOns?: { [key: string]: number };
-  // Webinar-specific fields
   metadata?: {
     type?: 'webinar' | 'subscription';
     webinarId?: string;
@@ -28,13 +26,13 @@ interface OrderRequest {
 interface PlanConfig {
   id: string;
   name: string;
-  price: number; // In Rupees
-  mrp: number; // New: Manufacturer's Recommended Price
-  discountPercentage: number; // Calculated discount percentage
+  price: number;
+  mrp: number;
+  discountPercentage: number;
   duration: string;
   optimizations: number;
   scoreChecks: number;
-  linkedinMessages: number; // Corrected to number
+  linkedinMessages: number;
   guidedBuilds: number;
   durationInHours: number;
   tag: string;
@@ -45,7 +43,6 @@ interface PlanConfig {
   popular?: boolean;
 }
 
-// UPDATED PLANS ARRAY - MUST MATCH src/services/paymentService.ts
 const plans: PlanConfig[] = [
   {
     id: 'leader_plan',
@@ -70,7 +67,7 @@ const plans: PlanConfig[] = [
       '✅ Priority Support',
     ],
     popular: true,
-    durationInHours: 8760, // 1 year
+    durationInHours: 8760,
   },
   {
     id: 'achiever_plan',
@@ -174,18 +171,14 @@ const plans: PlanConfig[] = [
   },
 ];
 
-// Defined add-ons with their types and quantities
-// This list MUST match the addOns array in src/services/paymentService.ts
 const addOns = [
-  // NEW ADD-ON: Single JD-Based Optimization Purchase
   {
     id: 'jd_optimization_single_purchase',
     name: 'JD-Based Optimization (1 Use)',
-    price: 49, // Example price in Rupees
+    price: 49,
     type: 'optimization',
     quantity: 1,
   },
-  // NEW ADD-ON: Single Resume Score Check Purchase
   {
     id: 'resume_score_check_single_purchase',
     name: 'Resume Score Check (1 Use)',
@@ -196,7 +189,6 @@ const addOns = [
 ];
 
 serve(async (req) => {
-  // Log function start
   console.log(`[${new Date().toISOString()}] - Function execution started.`);
 
   if (req.method === 'OPTIONS') {
@@ -204,15 +196,23 @@ serve(async (req) => {
   }
 
   try {
-    // Retrieve addOnsTotal from the request body
     const body: OrderRequest = await req.json();
-    // All amounts from frontend (amount, walletDeduction, addOnsTotal) are now in paise
     const { planId, couponCode, walletDeduction, addOnsTotal, amount: frontendCalculatedAmount, selectedAddOns, metadata } = body;
-    console.log(`[${new Date().toISOString()}] - Request body parsed. planId: ${planId}, couponCode: ${couponCode}, walletDeduction: ${walletDeduction}, addOnsTotal: ${addOnsTotal}, frontendCalculatedAmount: ${frontendCalculatedAmount}, selectedAddOns: ${JSON.stringify(selectedAddOns)}, metadata: ${JSON.stringify(metadata)}`);
+    
+    console.log(`[${new Date().toISOString()}] - Request received:`, {
+      planId,
+      couponCode,
+      walletDeduction,
+      addOnsTotal,
+      frontendCalculatedAmount,
+      selectedAddOns,
+      metadata
+    });
 
     // Get user from auth header
     const authHeader = req.headers.get('authorization');
     if (!authHeader) {
+      console.error(`[${new Date().toISOString()}] - No authorization header`);
       throw new Error('No authorization header');
     }
 
@@ -223,24 +223,56 @@ serve(async (req) => {
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
 
-    // Log after user authentication
     console.log(`[${new Date().toISOString()}] - User authentication complete. User ID: ${user?.id || 'N/A'}`);
 
     if (userError || !user) {
+      console.error(`[${new Date().toISOString()}] - User authentication failed:`, userError);
       throw new Error('Invalid user token');
     }
 
     // Handle webinar payment flow
     const isWebinarPayment = metadata?.type === 'webinar';
 
+    // CRITICAL FIX: Validate webinar payment amount
+    if (isWebinarPayment) {
+      console.log(`[${new Date().toISOString()}] - Processing webinar payment`);
+      
+      if (!frontendCalculatedAmount || frontendCalculatedAmount <= 0) {
+        console.error(`[${new Date().toISOString()}] - Invalid webinar amount: ${frontendCalculatedAmount}`);
+        return new Response(
+          JSON.stringify({ 
+            error: 'Invalid payment amount for webinar. Amount must be greater than 0.',
+            details: `Received amount: ${frontendCalculatedAmount}`
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          },
+        );
+      }
+
+      if (!metadata?.webinarId || !metadata?.registrationId) {
+        console.error(`[${new Date().toISOString()}] - Missing webinar metadata:`, metadata);
+        return new Response(
+          JSON.stringify({ 
+            error: 'Missing required webinar information',
+            details: 'webinarId and registrationId are required'
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          },
+        );
+      }
+    }
+
     // Get plan details
     let plan: PlanConfig;
     if (isWebinarPayment) {
-      // For webinar payments, create a virtual plan from the amount
       plan = {
         id: 'webinar_payment',
         name: metadata?.webinarTitle || 'Webinar Registration',
-        price: frontendCalculatedAmount / 100, // Convert paise to rupees
+        price: frontendCalculatedAmount / 100,
         mrp: frontendCalculatedAmount / 100,
         discountPercentage: 0,
         duration: 'One-time Purchase',
@@ -259,15 +291,15 @@ serve(async (req) => {
       plan = {
         id: 'addon_only_purchase',
         name: 'Add-on Only Purchase',
-        price: 0, // In Rupees
-        mrp: 0, // MRP
-        discountPercentage: 0, // Discount percentage
+        price: 0,
+        mrp: 0,
+        discountPercentage: 0,
         duration: 'One-time Purchase',
         optimizations: 0,
         scoreChecks: 0,
         linkedinMessages: 0,
         guidedBuilds: 0,
-        durationInHours: 0, // No specific duration for add-on only
+        durationInHours: 0,
         tag: '',
         tagColor: '',
         gradient: '',
@@ -277,15 +309,13 @@ serve(async (req) => {
     } else {
       const foundPlan = plans.find((p) => p.id === planId);
       if (!foundPlan) {
+        console.error(`[${new Date().toISOString()}] - Invalid plan ID: ${planId}`);
         throw new Error('Invalid plan selected');
       }
       plan = foundPlan;
     }
 
-    // Calculate final amount based on plan price (all calculations in paise)
-    // Ensure this line is at the top level of the try block
-    let originalPrice = isWebinarPayment ? frontendCalculatedAmount : (plan?.price || 0) * 100; // Convert to paise, or use webinar amount
-
+    let originalPrice = isWebinarPayment ? frontendCalculatedAmount : (plan?.price || 0) * 100;
     let discountAmount = 0;
     let finalAmount = originalPrice;
     let appliedCoupon = null;
@@ -294,7 +324,6 @@ serve(async (req) => {
     if (couponCode && !isWebinarPayment) {
       const normalizedCoupon = couponCode.toLowerCase().trim();
 
-      // Per-user coupon usage check (now applies to all non-empty coupon codes)
       const { count: userCouponUsageCount, error: userCouponUsageError } = await supabase
         .from('payment_transactions')
         .select('id', { count: 'exact' })
@@ -313,33 +342,27 @@ serve(async (req) => {
           JSON.stringify({ error: `Coupon "${normalizedCoupon}" has already been used by this account.` }),
           {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400, // Bad Request
+            status: 400,
           },
         );
       }
-      // END Per-user coupon usage check
 
-      // Existing coupon logic
-      // NEW: full_support coupon - free career_pro_max plan
       if (normalizedCoupon === 'fullsupport' && planId === 'career_pro_max') {
         finalAmount = 0;
-        discountAmount = plan.price * 100; // In paise
+        discountAmount = plan.price * 100;
         appliedCoupon = 'fullsupport';
       }
-      // first100 coupon - free lite_check plan only
       else if (normalizedCoupon === 'first100' && planId === 'lite_check') {
         finalAmount = 0;
-        discountAmount = plan.price * 100; // In paise
+        discountAmount = plan.price * 100;
         appliedCoupon = 'first100';
       }
-      // first500 coupon - 98% off lite_check plan only (NEW LOGIC)
       else if (normalizedCoupon === 'first500' && planId === 'lite_check') {
-        // Check usage limit for first500 coupon (global limit)
         const { count, error: countError } = await supabase
           .from('payment_transactions')
           .select('id', { count: 'exact' })
           .eq('coupon_code', 'first500')
-          .in('status', ['success', 'pending']); // Count successful and pending uses
+          .in('status', ['success', 'pending']);
 
         if (countError) {
           console.error(`[${new Date().toISOString()}] - Error counting first500 coupon usage:`, countError);
@@ -350,39 +373,32 @@ serve(async (req) => {
           throw new Error('Coupon "first500" has reached its usage limit.');
         }
 
-        discountAmount = Math.floor(plan.price * 100 * 0.98); // Calculate in paise
-        finalAmount = (plan.price * 100) - discountAmount; // Calculate in paise
+        discountAmount = Math.floor(plan.price * 100 * 0.98);
+        finalAmount = (plan.price * 100) - discountAmount;
         appliedCoupon = 'first500';
       }
-      // worthyone coupon - 50% off career_pro_max plan only
       else if (normalizedCoupon === 'worthyone' && planId === 'career_pro_max') {
-        const discountAmount = Math.floor(plan.price * 100 * 0.5); // Calculate in paise
-        finalAmount = (plan.price * 100) - discountAmount; // Calculate in paise
+        const discountAmount = Math.floor(plan.price * 100 * 0.5);
+        finalAmount = (plan.price * 100) - discountAmount;
         appliedCoupon = 'worthyone';
       }
-      // NEW COUPON LOGIC: VNKR50% for career_pro_max
       else if (normalizedCoupon === 'vnkr50%' && planId === 'career_pro_max') {
-        discountAmount = Math.floor(originalPrice * 0.5); // 50% off
+        discountAmount = Math.floor(originalPrice * 0.5);
         finalAmount = originalPrice - discountAmount;
         appliedCoupon = 'vnkr50%';
       }
-      // NEW COUPON LOGIC: VNK50 for career_pro_max
       else if (normalizedCoupon === 'vnk50' && planId === 'career_pro_max') {
-        discountAmount = Math.floor(originalPrice * 0.5); // 50% off
+        discountAmount = Math.floor(originalPrice * 0.5);
         finalAmount = originalPrice - discountAmount;
         appliedCoupon = 'vnk50';
       }
-      // ✅ UPDATED: DIWALI coupon - 90% off on ALL plans (one-time per user)
       else if (normalizedCoupon === 'diwali') {
-        // The per-user check above already ensures this user hasn't used DIWALI before
-        discountAmount = Math.floor(originalPrice * 0.9); // 90% off on current price
+        discountAmount = Math.floor(originalPrice * 0.9);
         finalAmount = originalPrice - discountAmount;
         appliedCoupon = 'diwali';
         console.log(`[${new Date().toISOString()}] - DIWALI coupon applied to plan ${planId}. Original: ${originalPrice}, Discount: ${discountAmount}, Final: ${finalAmount}`);
       }
       else {
-        // If coupon is not recognized or not applicable to the plan, do not apply discount
-        // and return an error message.
         return new Response(
           JSON.stringify({ error: 'Invalid coupon code or not applicable to selected plan.' }),
           {
@@ -393,25 +409,21 @@ serve(async (req) => {
       }
     }
 
-    // Apply wallet deduction (walletDeduction is already in paise from frontend)
     if (walletDeduction && walletDeduction > 0) {
       finalAmount = Math.max(0, finalAmount - walletDeduction);
     }
 
-    // Correctly add add-ons total to the final amount (addOnsTotal is already in paise from frontend)
     if (addOnsTotal && addOnsTotal > 0) {
       finalAmount += addOnsTotal;
     }
 
-        // IMPORTANT: Validate that the calculated finalAmount matches the frontend's calculation
-    // This prevents tampering with the price on the client-side.
-    // frontendCalculatedAmount is already in paise
-    
-    // For webinar payments, skip strict validation and use frontend amount directly
-    if (!isWebinarPayment) {
+    // For webinar payments, use frontend amount directly
+    if (isWebinarPayment) {
+      finalAmount = frontendCalculatedAmount;
+      console.log(`[${new Date().toISOString()}] - Webinar payment validated. Amount: ${frontendCalculatedAmount} paise`);
+    } else {
       if (finalAmount !== frontendCalculatedAmount) {
         console.error(`[${new Date().toISOString()}] - Price mismatch detected! Backend calculated: ${finalAmount}, Frontend sent: ${frontendCalculatedAmount}`);
-        console.error(`[${new Date().toISOString()}] - Debug info: originalPrice=${originalPrice}, discountAmount=${discountAmount}, walletDeduction=${walletDeduction}, addOnsTotal=${addOnsTotal}`);
         return new Response(
           JSON.stringify({ 
             error: 'Price mismatch detected. Please try again.',
@@ -427,42 +439,23 @@ serve(async (req) => {
           },
         );
       }
-    } else {
-      // For webinar payments, validate amount is positive and use it directly
-      if (!frontendCalculatedAmount || frontendCalculatedAmount <= 0) {
-        console.error(`[${new Date().toISOString()}] - Invalid webinar amount: ${frontendCalculatedAmount}`);
-        return new Response(
-          JSON.stringify({ error: 'Invalid payment amount for webinar' }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
-          },
-        );
-      }
-      // Use the frontend amount directly for webinars (no recalculation needed)
-      finalAmount = frontendCalculatedAmount;
-      console.log(`[${new Date().toISOString()}] - Webinar payment validated. Amount: ${frontendCalculatedAmount} paise`);
     }
 
-    // --- NEW: Create a pending payment_transactions record ---
+    // Create pending payment_transactions record
     console.log(`[${new Date().toISOString()}] - Creating pending payment_transactions record.`);
-    // All amounts for insert are now in paise (integers)
-    console.log(`[${new Date().toISOString()}] - Values for insert: user_id=${user.id}, plan_id=${planId}, status='pending', amount=${plan.price * 100}, currency='INR', coupon_code=${appliedCoupon}, discount_amount=${discountAmount}, final_amount=${finalAmount}, isWebinarPayment=${isWebinarPayment}`);
 
     const transactionInsert: any = {
       user_id: user.id,
-      plan_id: (isWebinarPayment || planId === 'addon_only_purchase') ? null : planId, // plan_id is text, not uuid
-      status: 'pending', // Initial status
-      amount: plan.price * 100, // Original plan price in paise
-      currency: 'INR', // Explicitly set currency as it's not nullable and has a default
-      coupon_code: appliedCoupon, // Save applied coupon code
-      discount_amount: discountAmount, // In paise
-      final_amount: finalAmount, // Final amount after discounts/wallet/addons (in paise)
+      plan_id: (isWebinarPayment || planId === 'addon_only_purchase') ? null : planId,
+      status: 'pending',
+      amount: plan.price * 100,
+      currency: 'INR',
+      coupon_code: appliedCoupon,
+      discount_amount: discountAmount,
+      final_amount: finalAmount,
       purchase_type: isWebinarPayment ? 'webinar' : (planId === 'addon_only_purchase' ? 'addon_only' : (Object.keys(selectedAddOns || {}).length > 0 ? 'plan_with_addons' : 'plan')),
-      // payment_id and order_id will be updated by verify-payment function
     };
 
-    // Add webinar-specific metadata if present
     if (isWebinarPayment && metadata) {
       transactionInsert.metadata = {
         type: 'webinar',
@@ -475,40 +468,40 @@ serve(async (req) => {
     const { data: transaction, error: transactionError } = await supabase
       .from('payment_transactions')
       .insert(transactionInsert)
-      .select('id') // Select the ID of the newly created row
+      .select('id')
       .single();
 
     if (transactionError) {
       console.error(`[${new Date().toISOString()}] - Error inserting pending transaction:`, transactionError);
-      throw new Error('Failed to initiate payment transaction.');
+      throw new Error(`Failed to initiate payment transaction: ${transactionError.message}`);
     }
+    
     const transactionId = transaction.id;
-    console.log(`[${new Date().toISOString()}] - Pending transaction created with ID: ${transactionId}, coupon_code: ${appliedCoupon}`);
-    // --- END NEW ---
+    console.log(`[${new Date().toISOString()}] - Pending transaction created with ID: ${transactionId}`);
 
     // Create Razorpay order
     const razorpayKeyId = Deno.env.get('RAZORPAY_KEY_ID');
     const razorpayKeySecret = Deno.env.get('RAZORPAY_KEY_SECRET');
 
     if (!razorpayKeyId || !razorpayKeySecret) {
+      console.error(`[${new Date().toISOString()}] - Razorpay credentials not configured`);
       throw new Error('Razorpay credentials not configured');
     }
 
     const orderData = {
-      amount: finalAmount, // Amount is already in paise
+      amount: finalAmount,
       currency: 'INR',
       receipt: `receipt_${Date.now()}`,
       notes: {
         planId: planId || 'webinar_payment',
         planName: plan.name,
-        originalAmount: plan.price * 100, // Original plan price in paise
+        originalAmount: plan.price * 100,
         couponCode: appliedCoupon,
-        discountAmount: discountAmount, // In paise
-        walletDeduction: walletDeduction || 0, // In paise - Store the actual walletDeduction
-        addOnsTotal: addOnsTotal || 0, // In paise
-        transactionId: transactionId, // Pass the transactionId to Razorpay notes
+        discountAmount: discountAmount,
+        walletDeduction: walletDeduction || 0,
+        addOnsTotal: addOnsTotal || 0,
+        transactionId: transactionId,
         selectedAddOns: JSON.stringify(selectedAddOns || {}),
-        // Add webinar-specific metadata to Razorpay notes
         paymentType: isWebinarPayment ? 'webinar' : 'subscription',
         webinarId: metadata?.webinarId || '',
         registrationId: metadata?.registrationId || '',
@@ -516,7 +509,7 @@ serve(async (req) => {
       },
     };
 
-    console.log(`[${new Date().toISOString()}] - Before making Razorpay API call with data: ${JSON.stringify(orderData)}`);
+    console.log(`[${new Date().toISOString()}] - Creating Razorpay order:`, orderData);
 
     const auth = btoa(`${razorpayKeyId}:${razorpayKeySecret}`);
 
@@ -529,29 +522,25 @@ serve(async (req) => {
       body: JSON.stringify(orderData),
     });
 
-    // Log after receiving response from Razorpay
-    console.log(`[${new Date().toISOString()}] - Received response from Razorpay API. Status: ${response.status}`);
+    console.log(`[${new Date().toISOString()}] - Razorpay API response status: ${response.status}`);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Razorpay API error:', errorText);
-      // If Razorpay order creation fails, mark the pending transaction as failed
+      console.error(`[${new Date().toISOString()}] - Razorpay API error:`, errorText);
       await supabase.from('payment_transactions').update({ status: 'failed' }).eq('id', transactionId);
-      throw new Error('Failed to create payment order with Razorpay');
+      throw new Error(`Failed to create payment order with Razorpay: ${errorText}`);
     }
 
     const order = await response.json();
-
-    // Log before returning the final response
-    console.log(`[${new Date().toISOString()}] - Returning final response. Order ID: ${order.id}, Transaction ID: ${transactionId}`);
+    console.log(`[${new Date().toISOString()}] - Razorpay order created successfully: ${order.id}`);
 
     return new Response(
       JSON.stringify({
         orderId: order.id,
-        amount: finalAmount, // Amount is already in paise
+        amount: finalAmount,
         keyId: razorpayKeyId,
         currency: 'INR',
-        transactionId: transactionId, // Return the transactionId to the frontend
+        transactionId: transactionId,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -561,7 +550,10 @@ serve(async (req) => {
   } catch (error) {
     console.error(`[${new Date().toISOString()}] - Error creating order:`, error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        timestamp: new Date().toISOString()
+      }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
