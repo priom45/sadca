@@ -368,26 +368,29 @@ serve(async (req) => {
     }
 
     // Handle webinar payment completion
-    if (isWebinarPayment && webinarId && registrationId) {
-      console.log(`[${new Date().toISOString()}] - Processing webinar payment completion for registration: ${registrationId}`);
+    // Handle webinar payment completion
+if (isWebinarPayment && webinarId && registrationId) {
+  console.log(`[${new Date().toISOString()}] - Processing webinar payment completion for registration: ${registrationId}`);
 
-      // Update webinar registration with payment status
-      const { error: updateRegistrationError } = await supabase
-        .from("webinar_registrations")
-        .update({
-          payment_status: 'completed',
-          transaction_id: transactionId,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", registrationId);
+  // Update webinar registration with payment status
+  const { error: updateRegistrationError } = await supabase
+    .from("webinar_registrations")
+    .update({
+      payment_status: 'completed',
+      registration_status: 'confirmed',  // ADDED THIS LINE
+      payment_transaction_id: transactionId,  // ADDED THIS LINE (use correct field name)
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", registrationId);
 
-      if (updateRegistrationError) {
-        console.error(`[${new Date().toISOString()}] - Error updating webinar registration:`, updateRegistrationError);
-        throw new Error("Failed to update webinar registration payment status");
-      }
+  if (updateRegistrationError) {
+    console.error(`[${new Date().toISOString()}] - Error updating webinar registration:`, updateRegistrationError);
+    throw new Error(`Failed to update webinar registration payment status: ${updateRegistrationError.message}`);
+  }
 
-      console.log(`[${new Date().toISOString()}] - Webinar registration updated successfully`);
-    }
+  console.log(`[${new Date().toISOString()}] - Webinar registration updated successfully`);
+}
+
 
     // Handle plan subscription (if not an add-on only purchase and not a webinar payment)
     if (planId && planId !== "addon_only_purchase" && !isWebinarPayment) {
