@@ -278,11 +278,12 @@ serve(async (req) => {
     // Get plan details
     let plan: PlanConfig;
     if (isWebinarPayment) {
+      // FIX: Amount is already in paise, don't divide by 100
       plan = {
         id: 'webinar_payment',
         name: metadata?.webinarTitle || 'Webinar Registration',
-        price: frontendCalculatedAmount / 100,
-        mrp: frontendCalculatedAmount / 100,
+        price: frontendCalculatedAmount,  // CHANGED: Removed / 100
+        mrp: frontendCalculatedAmount,    // CHANGED: Removed / 100
         discountPercentage: 0,
         duration: 'One-time Purchase',
         optimizations: 0,
@@ -457,7 +458,7 @@ serve(async (req) => {
       user_id: user.id,
       plan_id: (isWebinarPayment || planId === 'addon_only_purchase') ? null : planId,
       status: 'pending',
-      amount: plan.price * 100,
+      amount: isWebinarPayment ? frontendCalculatedAmount : plan.price * 100,  // CHANGED: Use correct base amount
       currency: 'INR',
       coupon_code: appliedCoupon,
       discount_amount: discountAmount,
@@ -504,7 +505,7 @@ serve(async (req) => {
       notes: {
         planId: planId || 'webinar_payment',
         planName: plan.name,
-        originalAmount: plan.price * 100,
+        originalAmount: isWebinarPayment ? frontendCalculatedAmount : plan.price * 100,  // CHANGED: Consistent amount
         couponCode: appliedCoupon,
         discountAmount: discountAmount,
         walletDeduction: walletDeduction || 0,
