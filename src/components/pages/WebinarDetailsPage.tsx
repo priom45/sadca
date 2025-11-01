@@ -223,7 +223,7 @@ export const WebinarDetailsPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-950 dark:to-gray-900 flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
       </div>
     );
@@ -231,7 +231,7 @@ export const WebinarDetailsPage: React.FC = () => {
 
   if (!registration || !registration.webinar) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-950 dark:to-gray-900 flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-600 mb-4">Webinar not found</p>
           <button
@@ -246,9 +246,14 @@ export const WebinarDetailsPage: React.FC = () => {
   }
 
   const { webinar } = registration;
+  const shouldShowMeetLink = Boolean(
+    webinar?.meet_link &&
+    registration.payment_status === 'completed' &&
+    registration.registration_status === 'confirmed'
+  );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 py-8 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-950 dark:to-gray-900 py-8 px-4">
       <div className="max-w-6xl mx-auto">
         {/* Back Button */}
         <button
@@ -266,7 +271,7 @@ export const WebinarDetailsPage: React.FC = () => {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-xl shadow-lg overflow-hidden"
+              className="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden"
             >
               {webinar.thumbnail_url && (
                 <img
@@ -276,7 +281,7 @@ export const WebinarDetailsPage: React.FC = () => {
                 />
               )}
               <div className="p-6">
-                <h1 className="text-3xl font-bold text-gray-900 mb-4">
+                <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">
                   {webinar.title}
                 </h1>
 
@@ -321,8 +326,8 @@ export const WebinarDetailsPage: React.FC = () => {
                   </div>
                 )}
 
-                {/* Join Button */}
-                {(isWebinarLive() || isWebinarPast()) && (
+                {/* Join / Meet Link Button */}
+                {(shouldShowMeetLink || isWebinarLive() || isWebinarPast()) && (
                   <a
                     href={webinar.meet_link}
                     target="_blank"
@@ -330,31 +335,50 @@ export const WebinarDetailsPage: React.FC = () => {
                     className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:shadow-lg transition-all mb-4"
                   >
                     <Video className="w-5 h-5" />
-                    {isWebinarLive() ? 'Join Webinar Now' : 'View Recording'}
+                    {isWebinarLive() ? 'Join Webinar Now' : isWebinarPast() ? 'View Recording' : 'Open Meet Link'}
                     <ExternalLink className="w-4 h-4" />
                   </a>
                 )}
 
                 {/* Webinar Info */}
-                <div className="space-y-3 text-gray-700">
-                  <div className="flex items-center gap-3">
+                <div className="space-y-3 text-gray-700 dark:text-gray-300">
+                  <div className="flex items-center gap-3 text-gray-800 dark:text-gray-200">
                     <Calendar className="w-5 h-5 text-gray-400" />
                     <span>
-                      {new Date(webinar.scheduled_at).toLocaleDateString('en-US', {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                      })}
+                      {(() => {
+                        const d = new Date(webinar.scheduled_at);
+                        const now = new Date();
+                        const isToday =
+                          d.getFullYear() === now.getFullYear() &&
+                          d.getMonth() === now.getMonth() &&
+                          d.getDate() === now.getDate();
+                        const dateText = d.toLocaleDateString('en-US', {
+                          weekday: 'long',
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        });
+                        return isToday ? `Today, ${dateText.split(', ').slice(1).join(', ')}` : dateText;
+                      })()}
                     </span>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 text-gray-800 dark:text-gray-200">
                     <Clock className="w-5 h-5 text-gray-400" />
                     <span>
-                      {new Date(webinar.scheduled_at).toLocaleTimeString('en-US', {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}{' '}
+                      {(() => {
+                        const d = new Date(webinar.scheduled_at);
+                        const now = new Date();
+                        const isToday =
+                          d.getFullYear() === now.getFullYear() &&
+                          d.getMonth() === now.getMonth() &&
+                          d.getDate() === now.getDate();
+                        const timeText = d.toLocaleTimeString('en-US', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          timeZone: 'Asia/Kolkata'
+                        });
+                        return isToday ? `Today · ${timeText}` : timeText;
+                      })()}{' '}
                       ({webinar.duration_minutes} minutes)
                     </span>
                   </div>
@@ -367,11 +391,11 @@ export const WebinarDetailsPage: React.FC = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="bg-white rounded-xl shadow-lg p-6"
+              className="bg-white dark:bg-gray-900 rounded-xl shadow-lg p-6"
             >
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
-                  <h2 className="text-2xl font-bold text-gray-900">Updates</h2>
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Updates</h2>
                   {unreadCount > 0 && (
                     <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm font-medium">
                       {unreadCount} New
@@ -449,76 +473,102 @@ export const WebinarDetailsPage: React.FC = () => {
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="bg-white rounded-xl shadow-lg p-6"
+              className="bg-white dark:bg-gray-900 rounded-xl shadow-lg p-6"
             >
               <div className="flex items-center gap-2 mb-4">
                 <CheckCircle className="w-6 h-6 text-green-600" />
-                <h2 className="text-xl font-bold text-gray-900">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
                   Registration Details
                 </h2>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-4 text-gray-800 dark:text-gray-200">
                 <div>
-                  <div className="flex items-center gap-2 text-gray-600 mb-1">
+                  <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300 mb-1">
                     <User className="w-4 h-4" />
                     <span className="text-sm font-medium">Name</span>
                   </div>
-                  <p className="text-gray-900 ml-6">{registration.full_name}</p>
+                  <p className="text-gray-900 dark:text-gray-100 ml-6">{registration.full_name}</p>
                 </div>
 
                 <div>
-                  <div className="flex items-center gap-2 text-gray-600 mb-1">
+                  <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300 mb-1">
                     <Mail className="w-4 h-4" />
                     <span className="text-sm font-medium">Email</span>
                   </div>
-                  <p className="text-gray-900 ml-6">{registration.email}</p>
+                  <p className="text-gray-900 dark:text-gray-100 ml-6">{registration.email}</p>
                 </div>
 
                 {registration.college_name && (
                   <div>
-                    <div className="flex items-center gap-2 text-gray-600 mb-1">
+                    <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300 mb-1">
                       <GraduationCap className="w-4 h-4" />
                       <span className="text-sm font-medium">College</span>
                     </div>
-                    <p className="text-gray-900 ml-6">{registration.college_name}</p>
+                    <p className="text-gray-900 dark:text-gray-100 ml-6">{registration.college_name}</p>
                   </div>
                 )}
 
                 {registration.phone_number && (
                   <div>
-                    <div className="flex items-center gap-2 text-gray-600 mb-1">
+                    <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300 mb-1">
                       <Phone className="w-4 h-4" />
                       <span className="text-sm font-medium">Phone</span>
                     </div>
-                    <p className="text-gray-900 ml-6">{registration.phone_number}</p>
+                    <p className="text-gray-900 dark:text-gray-100 ml-6">{registration.phone_number}</p>
                   </div>
                 )}
 
                 <div className="pt-4 border-t">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-gray-600">Payment Status</span>
-                    <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Payment Status</span>
+                    <span className="px-3 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 rounded-full text-xs font-medium">
                       {registration.payment_status}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Registration Status</span>
-                    <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Registration Status</span>
+                    <span className="px-3 py-1 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded-full text-xs font-medium">
                       {registration.registration_status}
                     </span>
                   </div>
                 </div>
 
+                {shouldShowMeetLink && (
+                  <div className="pt-4 border-t">
+                    <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300 mb-2">
+                      <Video className="w-4 h-4" />
+                      <span className="text-sm font-medium">Meeting Link</span>
+                    </div>
+                    <div className="flex items-center gap-2 ml-6">
+                      <a
+                        href={webinar.meet_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 break-all"
+                      >
+                        {webinar.meet_link}
+                      </a>
+                      <button
+                        onClick={() => navigator.clipboard?.writeText(webinar.meet_link)}
+                        className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded"
+                        title="Copy link"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <button
-                  onClick={() => {
-                    /* TODO: Implement download receipt */
-                    alert('Receipt download feature coming soon!');
-                  }}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+                  type="button"
+                  disabled
+                  aria-disabled="true"
+                  title="Receipt download coming soon"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-400 rounded-lg cursor-not-allowed"
                 >
                   <Download className="w-4 h-4" />
-                  Download Receipt
+                  Download Receipt (Coming soon)
                 </button>
               </div>
             </motion.div>
@@ -528,13 +578,13 @@ export const WebinarDetailsPage: React.FC = () => {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.1 }}
-              className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-6"
+              className="bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-700 rounded-xl p-6"
             >
-              <h3 className="font-semibold text-gray-900 mb-3">Need Help?</h3>
-              <p className="text-sm text-gray-600 mb-4">
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">Need Help?</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
                 If you have any questions about this webinar, check the updates above or contact our support team.
               </p>
-              <button className="w-full px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 rounded-lg transition-colors text-sm font-medium">
+              <button className="w-full px-4 py-2 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg transition-colors text-sm font-medium">
                 Contact Support
               </button>
             </motion.div>
