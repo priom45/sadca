@@ -30,7 +30,11 @@ declare global {
   }
 }
 
-export const WebinarLandingPage: React.FC = () => {
+type WebinarLandingPageProps = {
+  onShowAuth?: () => void;
+};
+
+export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAuth }) => {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuth();
@@ -107,7 +111,12 @@ export const WebinarLandingPage: React.FC = () => {
 
   const handleRegisterClick = () => {
     if (!isAuthenticated) {
-      navigate('/login');
+      if (onShowAuth) {
+        onShowAuth();
+      } else {
+        // Fallback: keep user on the same page if modal handler isn't provided
+        console.warn('Auth modal handler not provided. Ensure App passes onShowAuth to WebinarLandingPage.');
+      }
       return;
     }
 
@@ -122,7 +131,7 @@ export const WebinarLandingPage: React.FC = () => {
     setShowRegistrationModal(true);
   };
 
-   const handleRegistrationSubmit = async (e: React.FormEvent) => {
+  const handleRegistrationSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
 
   if (!webinar || !user) {
@@ -155,11 +164,59 @@ export const WebinarLandingPage: React.FC = () => {
     );
     console.log('Registration created:', registration.id);
 
+    // Dev/Test toggles
+    const useFakePayment = import.meta.env.VITE_FAKE_PAYMENT === 'true';
+    const isTestCheckout = import.meta.env.VITE_RAZORPAY_TEST_MODE === 'true';
+
+    if (useFakePayment) {
+      console.warn('[WebinarLandingPage] Using FAKE payment flow (VITE_FAKE_PAYMENT=true). No Razorpay call will be made.');
+      const fakeTxnId = `FAKE_TXN_${Date.now()}`;
+
+      await webinarService.updateRegistrationPayment(
+        registration.id,
+        fakeTxnId,
+        'completed'
+      );
+
+      try {
+        const scheduledDate = new Date(webinar.scheduled_at);
+        await supabase.functions.invoke('send-webinar-confirmation-email', {
+          body: {
+            registrationId: registration.id,
+            recipientEmail: registrationData.email,
+            recipientName: registrationData.full_name,
+            webinarTitle: webinar.title,
+            webinarDate: scheduledDate.toLocaleDateString('en-US', {
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
+            }),
+            webinarTime: scheduledDate.toLocaleTimeString('en-US', {
+              hour: '2-digit',
+              minute: '2-digit'
+            }),
+            meetLink: webinar.meet_link,
+            duration: webinar.duration_minutes
+          }
+        });
+      } catch (e) {
+        console.warn('[WebinarLandingPage] Email function failed in fake payment mode:', e);
+      }
+
+      setShowRegistrationModal(false);
+      setIsProcessingPayment(false);
+      alert('Registration successful (test mode). Check your email for the meeting link.');
+      navigate('/webinars');
+      return;
+    }
+
     // Step 2: Prepare payment order request
     const orderRequestBody = {
       amount: webinar.discounted_price,
       currency: 'INR',
       userId: user.id,
+      testMode: isTestCheckout,
       metadata: {
         type: 'webinar' as const,
         webinarId: webinar.id,
@@ -179,9 +236,22 @@ export const WebinarLandingPage: React.FC = () => {
 
     if (orderError) {
       console.error('Order error details:', orderError);
-      // IMPROVED ERROR MESSAGE
-      const errorMessage = orderError.message || 'Unknown error occurred';
-      throw new Error(`Payment order error: ${errorMessage}`);
+      // Try to extract details from the Edge Function response for better diagnosis
+      let details = '';
+      try {
+        const anyErr: any = orderError as any;
+        if (anyErr?.context?.json) {
+          const json = await anyErr.context.json();
+          details = json?.error || JSON.stringify(json);
+        } else if (anyErr?.context?.text) {
+          details = await anyErr.context.text();
+        }
+      } catch (e) {
+        // ignore
+      }
+      const baseMsg = orderError.message || 'Unknown error occurred';
+      const composed = details ? `${baseMsg} — ${details}` : baseMsg;
+      throw new Error(`Payment order error: ${composed}`);
     }
 
     if (!orderData || !orderData.orderId) {
@@ -189,8 +259,10 @@ export const WebinarLandingPage: React.FC = () => {
       throw new Error('Failed to create payment order - no order ID received');
     }
 
-    // Step 4: Get Razorpay key
-    const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
+    // Step 4: Get Razorpay key (prefer test key when test mode)
+    const razorpayKey = isTestCheckout
+      ? (import.meta.env.VITE_RAZORPAY_TEST_KEY_ID || import.meta.env.VITE_RAZORPAY_KEY_ID)
+      : import.meta.env.VITE_RAZORPAY_KEY_ID;
     if (!razorpayKey) {
       throw new Error('Razorpay key not configured');
     }
@@ -200,8 +272,8 @@ export const WebinarLandingPage: React.FC = () => {
       key: razorpayKey,
       amount: webinar.discounted_price,
       currency: 'INR',
-      name: 'PrimoBoost AI',
-      description: webinar.title,
+      name: isTestCheckout ? 'PrimoBoost AI — TEST MODE' : 'PrimoBoost AI',
+      description: isTestCheckout ? `${webinar.title} (Sandbox test payment)` : webinar.title,
       order_id: orderData.orderId,
       handler: async function (response: any) {
         try {
@@ -264,8 +336,13 @@ export const WebinarLandingPage: React.FC = () => {
         name: registrationData.full_name,
         email: registrationData.email,
       },
+      notes: {
+        testMode: isTestCheckout ? 'true' : 'false',
+        webinarId: webinar.id,
+        registrationId: registration.id,
+      },
       theme: {
-        color: '#667eea',
+        color: isTestCheckout ? '#f59e0b' : '#667eea',
       },
       modal: {
         ondismiss: function() {
@@ -286,10 +363,22 @@ export const WebinarLandingPage: React.FC = () => {
     let errorMessage = 'Failed to create registration. Please try again.';
     
     if (error?.message) {
-      if (error.message.includes('Edge Function returned a non-2xx status code')) {
+      const msg = String(error.message);
+      if (msg.includes('Edge Function returned a non-2xx status code')) {
         errorMessage = 'Payment system error. Please check your internet connection and try again.';
+      } else if (/row-level security/i.test(msg)) {
+        errorMessage = 'Permission denied by security policy. Your session may have expired. Please sign in again and retry.';
+        // Proactively prompt re-auth
+        if (onShowAuth) {
+          onShowAuth();
+        }
+      } else if (/not signed in/i.test(msg)) {
+        errorMessage = 'You are not signed in. Please log in and try again.';
+        if (onShowAuth) {
+          onShowAuth();
+        }
       } else {
-        errorMessage = error.message;
+        errorMessage = msg;
       }
     }
     
@@ -684,6 +773,11 @@ export const WebinarLandingPage: React.FC = () => {
             <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
               Complete Your Registration
             </h3>
+            {(import.meta.env.VITE_RAZORPAY_TEST_MODE === 'true' || import.meta.env.VITE_FAKE_PAYMENT === 'true') && (
+              <div className="mb-4 inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
+                TEST MODE
+              </div>
+            )}
             <form onSubmit={handleRegistrationSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
