@@ -337,7 +337,7 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
           setIsProcessingPayment(false);
 
           alert('Registration successful! Check your email for the meeting link.');
-          navigate('/webinars');
+          navigate(`/webinar-details/${registration.id}`);
         } catch (error) {
           console.error('Error verifying payment:', error);
           setIsProcessingPayment(false);
