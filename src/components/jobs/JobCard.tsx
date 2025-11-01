@@ -1,7 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Building2,
   MapPin,
   Clock,
   Calendar,
@@ -39,7 +38,6 @@ export const JobCard: React.FC<JobCardProps> = ({
   const eligibleYearTags = useMemo(() => {
     const raw = job.eligible_years;
     if (!raw) return [];
-
     const tokens = Array.isArray(raw)
       ? raw
       : raw.includes(',') || raw.includes('|') || raw.includes('/')
@@ -58,7 +56,6 @@ export const JobCard: React.FC<JobCardProps> = ({
 
   const handleManualApply = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // Redirect to details page for manual apply (better shareable path)
     navigate(`/jobs/${job.id}`);
   };
 
@@ -74,7 +71,9 @@ export const JobCard: React.FC<JobCardProps> = ({
   };
 
   const skillTags = job.skills || [];
-  const postedDaysAgo = Math.floor((Date.now() - new Date(job.posted_date).getTime()) / (1000 * 60 * 60 * 24));
+  const postedDaysAgo = Math.floor(
+    (Date.now() - new Date(job.posted_date).getTime()) / (1000 * 60 * 60 * 24)
+  );
 
   return (
     <motion.div
@@ -82,12 +81,20 @@ export const JobCard: React.FC<JobCardProps> = ({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
       onClick={handleCardClick}
-      className={`bg-white dark:bg-dark-100 rounded-xl border-2 ${
+      className={`relative bg-white dark:bg-dark-100 rounded-xl border-2 ${
         job.match_score
           ? 'border-green-400 dark:border-green-500 shadow-lg shadow-green-200 dark:shadow-green-900/30'
           : 'border-gray-200 dark:border-dark-300'
       } hover:border-blue-400 dark:hover:border-neon-cyan-500 hover:shadow-lg transition-all duration-300 cursor-pointer overflow-hidden`}
     >
+      {/* COMING SOON OVERLAY (does not block clicks) */}
+      <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10 pointer-events-none">
+        <span className="text-white text-sm font-semibold bg-black/60 px-4 py-2 rounded-lg">
+          Auto Apply Coming Soon 🚀
+        </span>
+      </div>
+
+      {/* MATCH HEADER */}
       {job.match_score && (
         <div className="bg-gradient-to-r from-green-500 to-emerald-500 px-4 py-2 flex items-center justify-between">
           <div className="flex items-center space-x-2 text-white">
@@ -101,9 +108,10 @@ export const JobCard: React.FC<JobCardProps> = ({
           )}
         </div>
       )}
-      <div className="p-3 sm:p-4">
+
+      <div className="relative z-20 p-3 sm:p-4">
         <div className="flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4">
-          {/* Company Logo */}
+          {/* COMPANY LOGO */}
           <div className="flex-shrink-0 w-16 h-16 sm:w-16 sm:h-16 bg-white dark:bg-dark-200 rounded-lg border border-gray-200 dark:border-dark-300 flex items-center justify-center p-1 sm:p-2 overflow-hidden">
             {job.company_logo_url ? (
               <img
@@ -127,7 +135,7 @@ export const JobCard: React.FC<JobCardProps> = ({
             )}
           </div>
 
-          {/* Job Info */}
+          {/* JOB INFO */}
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between mb-2">
               <div className="flex-1 min-w-0 pr-4">
@@ -138,40 +146,9 @@ export const JobCard: React.FC<JobCardProps> = ({
                   {job.company_name}
                 </p>
               </div>
-
-              {/* Commission Badge */}
-              {job.user_has_applied && job.commission_percentage && job.commission_percentage > 0 && (
-                <div className="flex-shrink-0 relative">
-                  <svg className="w-10 h-10 transform -rotate-90">
-                    <circle
-                      cx="20"
-                      cy="20"
-                      r="16"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      fill="none"
-                      className="text-gray-200 dark:text-dark-300"
-                    />
-                    <circle
-                      cx="20"
-                      cy="20"
-                      r="16"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      fill="none"
-                      strokeDasharray={`${2 * Math.PI * 16}`}
-                      strokeDashoffset={`${2 * Math.PI * 16 * (1 - job.commission_percentage / 100)}`}
-                      className={job.user_application_method === 'auto' ? 'text-green-500 dark:text-green-400' : 'text-blue-500 dark:text-blue-400'}
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-[10px] font-bold text-gray-700 dark:text-gray-300">{Math.round(job.commission_percentage)}%</span>
-                  </div>
-                </div>
-              )}
             </div>
 
-            {/* Job Details */}
+            {/* JOB DETAILS */}
             <div className="flex flex-wrap items-center gap-2 text-[11px] sm:text-xs text-gray-600 dark:text-gray-400 mb-2">
               <div className="flex items-center space-x-1">
                 <MapPin className="w-3.5 h-3.5" />
@@ -193,7 +170,7 @@ export const JobCard: React.FC<JobCardProps> = ({
               )}
             </div>
 
-            {/* Skill Tags */}
+            {/* SKILL TAGS */}
             <div className="flex flex-wrap gap-1.5 mb-3">
               {skillTags.slice(0, 6).map((tag, index) => (
                 <span
@@ -210,7 +187,7 @@ export const JobCard: React.FC<JobCardProps> = ({
               )}
             </div>
 
-            {/* Actions Row */}
+            {/* ACTIONS */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div className="flex items-center space-x-1.5">
                 {job.has_referral && (
@@ -230,9 +207,15 @@ export const JobCard: React.FC<JobCardProps> = ({
                 </span>
               </div>
 
-              {/* Apply Buttons */}
+              {/* APPLY BUTTONS */}
               <div className="flex items-center sm:space-x-2 gap-2 sm:gap-0">
-               
+                <button
+                  onClick={handleAutoApply}
+                  className="px-3 py-1 bg-gradient-to-r from-green-600 to-emerald-600 dark:from-green-500 dark:to-emerald-500 text-white rounded-lg text-xs font-semibold hover:from-green-700 hover:to-emerald-700 shadow-md hover:shadow-lg transition-all duration-200 flex items-center space-x-1 z-30 relative"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>Auto Apply</span>
+                </button>
                 <button
                   onClick={handleManualApply}
                   className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-500 dark:to-purple-500 text-white rounded-lg text-sm font-semibold hover:from-blue-700 hover:to-purple-700 shadow-md hover:shadow-lg transition-all duration-200 w-full sm:w-auto"
