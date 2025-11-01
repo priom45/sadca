@@ -35,6 +35,7 @@ export const JobCard: React.FC<JobCardProps> = ({
 }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const autoApplyEnabled = import.meta.env.VITE_ENABLE_AUTO_APPLY === 'true';
 
   const eligibleYearTags = useMemo(() => {
     const raw = job.eligible_years;
@@ -64,6 +65,9 @@ export const JobCard: React.FC<JobCardProps> = ({
 
   const handleAutoApply = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!autoApplyEnabled) {
+      return; // disabled with overlay
+    }
     if (!isAuthenticated) {
       onShowAuth();
       return;
@@ -234,10 +238,17 @@ export const JobCard: React.FC<JobCardProps> = ({
               <div className="flex items-center sm:space-x-2 gap-2 sm:gap-0">
                 <button
                   onClick={handleAutoApply}
-                  className="px-3 py-1 bg-gradient-to-r from-green-600 to-emerald-600 dark:from-green-500 dark:to-emerald-500 text-white rounded-lg text-xs font-semibold hover:from-green-700 hover:to-emerald-700 shadow-md hover:shadow-lg transition-all duration-200 w-auto flex items-center space-x-1"
+                  disabled={!autoApplyEnabled}
+                  aria-disabled={!autoApplyEnabled}
+                  className={`relative px-3 py-1 bg-gradient-to-r from-green-600 to-emerald-600 dark:from-green-500 dark:to-emerald-500 text-white rounded-lg text-xs font-semibold shadow-md transition-all duration-200 w-auto flex items-center space-x-1 ${autoApplyEnabled ? 'hover:from-green-700 hover:to-emerald-700 hover:shadow-lg' : 'opacity-60 cursor-not-allowed'}`}
                 >
                   <Sparkles className="w-3 h-3" />
                   <span>Auto Apply</span>
+                  {!autoApplyEnabled && (
+                    <span className="absolute inset-0 rounded-lg bg-black/40 flex items-center justify-center text-[10px] font-semibold">
+                      Coming soon
+                    </span>
+                  )}
                 </button>
                 <button
                   onClick={handleManualApply}
