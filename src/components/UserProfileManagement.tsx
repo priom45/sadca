@@ -27,6 +27,8 @@ import {
   ArrowRight,
   Info,
   Target,
+  Copy as CopyIcon,
+  Share2
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../services/authService';
@@ -375,6 +377,8 @@ export const UserProfileManagement: React.FC<UserProfileManagementProps> = ({
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number>(0); // In Rupees
   const [loadingWallet, setLoadingWallet] = useState(true);
+  const [isGeneratingReferral, setIsGeneratingReferral] = useState(false);
+  const [referralError, setReferralError] = useState<string | null>(null);
   const [redeemAmount, setRedeemAmount] = useState<string>('');
   const [redeemMethod, setRedeemMethod] = useState<'upi' | 'bank_transfer'>('upi');
   const [redeemDetails, setRedeemDetails] = useState<{ upiId?: string; bankAccount?: string; ifscCode?: string; accountHolderName?: string }>({});
@@ -1091,6 +1095,93 @@ export const UserProfileManagement: React.FC<UserProfileManagementProps> = ({
 
           {activeTab === 'wallet' && (
             <div className="space-y-6">
+              {/* Referral Code Section */}
+              <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 border border-gray-200 dark:bg-dark-100 dark:border-dark-300">
+                <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">Referral Code</h2>
+                {user?.referralCode ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between bg-gray-50 dark:bg-dark-200 rounded-lg p-3">
+                      <div>
+                        <p className="text-sm text-gray-600 dark:text-gray-300">Your Code</p>
+                        <p className="font-mono text-xl font-bold text-gray-900 dark:text-gray-100">{user.referralCode}</p>
+                      </div>
+                      <button
+                        onClick={() => navigator.clipboard?.writeText(user.referralCode || '')}
+                        className="px-3 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-dark-300 dark:hover:bg-dark-200 dark:text-gray-200 flex items-center gap-2"
+                        title="Copy code"
+                      >
+                        <CopyIcon className="w-4 h-4" /> Copy
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between bg-gray-50 dark:bg-dark-200 rounded-lg p-3">
+                      <div className="truncate mr-3">
+                        <p className="text-sm text-gray-600 dark:text-gray-300">Share Link</p>
+                        <p className="text-sm font-medium text-blue-600 dark:text-neon-cyan-400 truncate">
+                          {`${window.location.origin}/?ref=${user.referralCode}`}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/?ref=${user?.referralCode}`)}
+                          className="px-3 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-dark-300 dark:hover:bg-dark-200 dark:text-gray-200"
+                          title="Copy link"
+                        >
+                          <CopyIcon className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={async () => {
+                            const url = `${window.location.origin}/?ref=${user?.referralCode}`;
+                            try {
+                              if ((navigator as any).share) {
+                                await (navigator as any).share({ title: 'Join PrimoBoost AI', text: 'Use my referral link to sign up!', url });
+                              } else {
+                                await navigator.clipboard?.writeText(url);
+                                alert('Referral link copied to clipboard');
+                              }
+                            } catch {}
+                          }}
+                          className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
+                          title="Share link"
+                        >
+                          <Share2 className="w-4 h-4" /> Share
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-gray-600 dark:text-gray-300">You don’t have a referral code yet.</p>
+                    {referralError && (
+                      <p className="text-sm text-red-600 dark:text-red-400">{referralError}</p>
+                    )}
+                    <button
+                      disabled={isGeneratingReferral}
+                      onClick={async () => {
+                        if (!user) return;
+                        setReferralError(null);
+                        setIsGeneratingReferral(true);
+                        try {
+                          const base = (user.username || user.email.split('@')[0] || 'PRIMO').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+                          const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+                          const code = `${base}${rand}`;
+                          const { error } = await supabase.from('user_profiles').update({ referral_code: code }).eq('id', user.id);
+                          if (error) throw error;
+                          await revalidateUserSession();
+                        } catch (e: any) {
+                          setReferralError('Failed to generate referral code. Please try again later.');
+                        } finally {
+                          setIsGeneratingReferral(false);
+                        }
+                      }}
+                      className="btn-primary inline-flex items-center gap-2"
+                    >
+                      {isGeneratingReferral ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                      <span>{isGeneratingReferral ? 'Generating...' : 'Generate Referral Code'}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 border border-gray-200 dark:bg-dark-100 dark:border-dark-300">
                 <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
                   <Wallet className="w-5 h-5 mr-2 text-green-600 dark:text-neon-green-400" />
