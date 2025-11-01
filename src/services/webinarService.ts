@@ -133,6 +133,17 @@ class WebinarService {
     return data || [];
   }
 
+  async getRegistrationById(registrationId: string): Promise<WebinarRegistrationWithDetails | null> {
+    const { data, error } = await supabase
+      .from('webinar_registrations')
+      .select(`*, webinar:webinars(*)`)
+      .eq('id', registrationId)
+      .maybeSingle();
+
+    if (error) throw new Error('Failed to fetch registration');
+    return data;
+  }
+
   async checkUserRegistration(userId: string, webinarId: string): Promise<WebinarRegistration | null> {
     const { data, error } = await supabase
       .from('webinar_registrations')
