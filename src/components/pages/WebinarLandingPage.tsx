@@ -220,7 +220,8 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
             }),
             webinarTime: scheduledDate.toLocaleTimeString('en-US', {
               hour: '2-digit',
-              minute: '2-digit'
+              minute: '2-digit',
+              timeZone: 'Asia/Kolkata'
             }),
             meetLink: webinar.meet_link,
             duration: webinar.duration_minutes
@@ -341,7 +342,8 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
               }),
               webinarTime: scheduledDate.toLocaleTimeString('en-US', {
                 hour: '2-digit',
-                minute: '2-digit'
+                minute: '2-digit',
+                timeZone: 'Asia/Kolkata'
               }),
               meetLink: webinar.meet_link,
               duration: webinar.duration_minutes
@@ -484,7 +486,8 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
                 <Clock className="w-5 h-5 mr-2" />
                 {new Date(webinar.scheduled_at).toLocaleTimeString('en-US', {
                   hour: '2-digit',
-                  minute: '2-digit'
+                  minute: '2-digit',
+                  timeZone: 'Asia/Kolkata'
                 })}
               </div>
               <div className="flex items-center text-white">
