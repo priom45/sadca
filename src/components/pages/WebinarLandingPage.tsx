@@ -50,6 +50,9 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
   } | null>(null);
   const [showRegistrationModal, setShowRegistrationModal] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [promoCode, setPromoCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
+  const [payableAmountPaise, setPayableAmountPaise] = useState<number>(0);
   const [registrationData, setRegistrationData] = useState({
     full_name: '',
     email: '',
@@ -70,6 +73,14 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
       }, 1000);
 
       return () => clearInterval(interval);
+    }
+  }, [webinar]);
+
+  useEffect(() => {
+    if (webinar) {
+      setPayableAmountPaise(webinar.discounted_price);
+      setAppliedCoupon(null);
+      setPromoCode('');
     }
   }, [webinar]);
 
@@ -155,21 +166,6 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
   setIsProcessingPayment(true);
 
   try {
-    // CRITICAL FIX: Get fresh auth session token
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-    if (sessionError || !session) {
-      console.error('Session error:', sessionError);
-      setIsProcessingPayment(false);
-      alert('Your session has expired. Please log in again.');
-      if (onShowAuth) {
-        onShowAuth();
-      }
-      return;
-    }
-
-    console.log('Session validated. User ID:', session.user.id);
-
     // Step 1: Create registration
     console.log('Creating webinar registration...');
     const registration = await webinarService.createRegistration(
@@ -222,15 +218,16 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
       setShowRegistrationModal(false);
       setIsProcessingPayment(false);
       alert('Registration successful (test mode). Check your email for the meeting link.');
-      navigate(`/webinar-details/${registration.id}`);
+      navigate('/webinars');
       return;
     }
 
     // Step 2: Prepare payment order request
     const orderRequestBody = {
-      amount: webinar.discounted_price,
+      amount: payableAmountPaise,
       currency: 'INR',
       userId: user.id,
+      couponCode: appliedCoupon || undefined,
       testMode: isTestCheckout,
       metadata: {
         type: 'webinar' as const,
@@ -241,45 +238,37 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
     };
 
     console.log('Creating payment order with body:', orderRequestBody);
-    console.log('Using auth token from session');
 
-    // Step 3: Create payment order via Supabase function with proper auth headers
+    // Step 3: Create payment order via Supabase function
     const { data: orderData, error: orderError } = await supabase.functions.invoke('create-order', {
-      body: orderRequestBody,
-      headers: {
-        Authorization: `Bearer ${session.access_token}`
-      }
+      body: orderRequestBody
     });
 
     console.log('Order response:', { data: orderData, error: orderError });
 
     if (orderError) {
       console.error('Order error details:', orderError);
-      setIsProcessingPayment(false);
-
-      // Provide user-friendly error messages
-      let userMessage = 'Failed to create payment order. ';
-
-      if (orderError.message?.includes('401') || orderError.message?.includes('Unauthorized')) {
-        userMessage = 'Authentication error. Please log out and log in again, then try registering for the webinar.';
-      } else if (orderError.message?.includes('network') || orderError.message?.includes('fetch')) {
-        userMessage = 'Network error. Please check your internet connection and try again.';
-      } else if (orderError.message?.includes('Invalid payment amount')) {
-        userMessage = 'Invalid webinar pricing configuration. Please contact support.';
-      } else {
-        userMessage += orderError.message || 'An unexpected error occurred. Please try again or contact support.';
+      // Try to extract details from the Edge Function response for better diagnosis
+      let details = '';
+      try {
+        const anyErr: any = orderError as any;
+        if (anyErr?.context?.json) {
+          const json = await anyErr.context.json();
+          details = json?.error || JSON.stringify(json);
+        } else if (anyErr?.context?.text) {
+          details = await anyErr.context.text();
+        }
+      } catch (e) {
+        // ignore
       }
-
-      alert(userMessage);
-      console.error('Full error object:', JSON.stringify(orderError, null, 2));
-      return;
+      const baseMsg = orderError.message || 'Unknown error occurred';
+      const composed = details ? `${baseMsg} — ${details}` : baseMsg;
+      throw new Error(`Payment order error: ${composed}`);
     }
 
     if (!orderData || !orderData.orderId) {
       console.error('Invalid order data received:', orderData);
-      setIsProcessingPayment(false);
-      alert('Failed to create payment order. The server did not return a valid order ID. Please try again or contact support.');
-      return;
+      throw new Error('Failed to create payment order - no order ID received');
     }
 
     // Step 4: Get Razorpay key (prefer test key when test mode)
@@ -293,7 +282,7 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
     // Step 5: Initialize Razorpay payment
     const options = {
       key: razorpayKey,
-      amount: webinar.discounted_price,
+      amount: orderData?.amount || payableAmountPaise,
       currency: 'INR',
       name: isTestCheckout ? 'PrimoBoost AI — TEST MODE' : 'PrimoBoost AI',
       description: isTestCheckout ? `${webinar.title} (Sandbox test payment)` : webinar.title,
@@ -302,7 +291,6 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
         try {
           console.log('Payment successful, verifying...', response);
           
-          // CRITICAL FIX: Use the same session token for verify-payment
           const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verify-payment', {
             body: {
               razorpay_order_id: response.razorpay_order_id,
@@ -314,9 +302,6 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
                 webinarId: webinar.id,
                 registrationId: registration.id
               }
-            },
-            headers: {
-              Authorization: `Bearer ${session.access_token}`
             }
           });
 
@@ -385,44 +370,31 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
   } catch (error: any) {
     console.error('Error creating registration:', error);
     setIsProcessingPayment(false);
-
+    
     // IMPROVED ERROR HANDLING
-    let errorMessage = 'Failed to create registration. ';
-    let shouldShowAuth = false;
-
+    let errorMessage = 'Failed to create registration. Please try again.';
+    
     if (error?.message) {
       const msg = String(error.message);
-
-      if (msg.includes('401') || msg.includes('Unauthorized')) {
-        errorMessage = 'Authentication error. Your session may have expired. Please log in again and retry.';
-        shouldShowAuth = true;
-      } else if (msg.includes('Edge Function returned a non-2xx status code')) {
+      if (msg.includes('Edge Function returned a non-2xx status code')) {
         errorMessage = 'Payment system error. Please check your internet connection and try again.';
-      } else if (/row-level security/i.test(msg) || /permission denied/i.test(msg)) {
-        errorMessage = 'Permission denied. Your session may have expired. Please sign in again and retry.';
-        shouldShowAuth = true;
-      } else if (/not signed in/i.test(msg) || /no authorization/i.test(msg)) {
+      } else if (/row-level security/i.test(msg)) {
+        errorMessage = 'Permission denied by security policy. Your session may have expired. Please sign in again and retry.';
+        // Proactively prompt re-auth
+        if (onShowAuth) {
+          onShowAuth();
+        }
+      } else if (/not signed in/i.test(msg)) {
         errorMessage = 'You are not signed in. Please log in and try again.';
-        shouldShowAuth = true;
-      } else if (msg.includes('Invalid webinar price')) {
-        errorMessage = 'Invalid webinar pricing configuration. Please contact support.';
-      } else if (msg.includes('network') || msg.includes('fetch failed')) {
-        errorMessage = 'Network error. Please check your internet connection and try again.';
+        if (onShowAuth) {
+          onShowAuth();
+        }
       } else {
-        errorMessage += msg;
+        errorMessage = msg;
       }
-    } else {
-      errorMessage += 'An unexpected error occurred. Please try again.';
     }
-
-    alert(errorMessage);
-    console.error('Full error details:', { error, message: error?.message, stack: error?.stack });
-
-    if (shouldShowAuth && onShowAuth) {
-      setTimeout(() => {
-        onShowAuth();
-      }, 500);
-    }
+    
+    alert(`Registration Error: ${errorMessage}`);
   }
 };
 
@@ -819,6 +791,45 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
               </div>
             )}
             <form onSubmit={handleRegistrationSubmit} className="space-y-4">
+              {/* Promo Code */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Promo Code (optional)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={promoCode}
+                    onChange={(e) => setPromoCode(e.target.value)}
+                    placeholder="Enter code e.g. PRIMO"
+                    className="flex-1 px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const code = promoCode.trim().toLowerCase();
+                      if (!webinar) return;
+                      if (!code) return;
+                      if (code === 'primo') {
+                        const discounted = Math.max(100, Math.floor(webinar.discounted_price * 0.01)); // 99% off
+                        setAppliedCoupon('primo');
+                        setPayableAmountPaise(discounted);
+                      } else {
+                        alert('Invalid promo code');
+                        setAppliedCoupon(null);
+                        setPayableAmountPaise(webinar.discounted_price);
+                      }
+                    }}
+                    className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Apply
+                  </button>
+                </div>
+                {appliedCoupon === 'primo' && (
+                  <p className="mt-2 text-sm text-green-600 dark:text-green-400">PRIMO applied — 99% OFF</p>
+                )}
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Full Name *
@@ -831,6 +842,25 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
                   className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
+              {/* Summary */}
+              {webinar && (
+                <div className="mt-2 p-3 rounded-lg bg-gray-50 dark:bg-gray-700/40 text-sm text-gray-700 dark:text-gray-200">
+                  <div className="flex justify-between">
+                    <span>Subtotal</span>
+                    <span>₹{(webinar.discounted_price / 100).toFixed(0)}</span>
+                  </div>
+                  {appliedCoupon === 'primo' && (
+                    <div className="flex justify-between text-green-600 dark:text-green-400">
+                      <span>PRIMO (−99%)</span>
+                      <span>−₹{((webinar.discounted_price - payableAmountPaise) / 100).toFixed(0)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-semibold mt-1">
+                    <span>Total</span>
+                    <span>₹{(payableAmountPaise / 100).toFixed(0)}</span>
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Email *
