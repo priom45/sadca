@@ -369,6 +369,7 @@ serve(async (req) => {
 
     // Handle webinar payment completion
     // Handle webinar payment completion
+// Handle webinar payment completion
 if (isWebinarPayment && webinarId && registrationId) {
   console.log(`[${new Date().toISOString()}] - Processing webinar payment completion for registration: ${registrationId}`);
 
@@ -377,11 +378,12 @@ if (isWebinarPayment && webinarId && registrationId) {
     .from("webinar_registrations")
     .update({
       payment_status: 'completed',
-      registration_status: 'confirmed',  // ADDED THIS LINE
-      payment_transaction_id: transactionId,  // ADDED THIS LINE (use correct field name)
+      registration_status: 'confirmed',
+      payment_transaction_id: transactionId,  // ← CORRECT FIELD NAME
       updated_at: new Date().toISOString(),
     })
     .eq("id", registrationId);
+
 
   if (updateRegistrationError) {
     console.error(`[${new Date().toISOString()}] - Error updating webinar registration:`, updateRegistrationError);
