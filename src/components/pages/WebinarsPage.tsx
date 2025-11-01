@@ -17,7 +17,11 @@ import { webinarService } from '../../services/webinarService';
 import { useAuth } from '../../contexts/AuthContext';
 import type { Webinar, WebinarFilters } from '../../types/webinar';
 
-export const WebinarsPage: React.FC = () => {
+type WebinarsPageProps = {
+  onShowAuth?: () => void;
+};
+
+export const WebinarsPage: React.FC<WebinarsPageProps> = ({ onShowAuth }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -226,7 +230,13 @@ export const WebinarsPage: React.FC = () => {
         <div className="text-center py-20">
           <p className="text-gray-600 dark:text-gray-400 mb-4">Please log in to view your registered webinars.</p>
           <button
-            onClick={() => navigate('/login')}
+            onClick={() => {
+              if (onShowAuth) {
+                onShowAuth();
+              } else {
+                console.warn('Auth modal handler not provided. Ensure App passes onShowAuth to WebinarsPage.');
+              }
+            }}
             className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
             Log In
