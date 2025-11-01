@@ -15,6 +15,8 @@ interface OrderRequest {
   addOnsTotal?: number;
   amount: number;
   selectedAddOns?: { [key: string]: number };
+  // Added: allow client to request test mode explicitly
+  testMode?: boolean;
   metadata?: {
     type?: 'webinar' | 'subscription';
     webinarId?: string;
@@ -206,7 +208,7 @@ serve(async (req) => {
     console.log(`[${new Date().toISOString()}] - Raw request body:`, bodyText);
     requestBody = JSON.parse(bodyText);
     
-    const { planId, couponCode, walletDeduction, addOnsTotal, amount: frontendCalculatedAmount, selectedAddOns, metadata } = requestBody;
+    const { planId, couponCode, walletDeduction, addOnsTotal, amount: frontendCalculatedAmount, selectedAddOns, metadata, testMode } = requestBody as OrderRequest;
     
     console.log(`[${new Date().toISOString()}] - Parsed request:`, {
       planId,
@@ -242,23 +244,13 @@ serve(async (req) => {
     // Handle webinar payment flow
     const isWebinarPayment = metadata?.type === 'webinar';
 
-    // CRITICAL FIX: Validate webinar payment amount
+    let originalPrice = 0; // in paise
+    let finalAmount = 0;   // in paise
+    let discountAmount = 0; // in paise
+    let appliedCoupon: string | null = null;
+
     if (isWebinarPayment) {
       console.log(`[${new Date().toISOString()}] - Processing webinar payment`);
-      
-      if (!frontendCalculatedAmount || frontendCalculatedAmount <= 0) {
-        console.error(`[${new Date().toISOString()}] - Invalid webinar amount: ${frontendCalculatedAmount}`);
-        return new Response(
-          JSON.stringify({ 
-            error: 'Invalid payment amount for webinar. Amount must be greater than 0.',
-            details: `Received amount: ${frontendCalculatedAmount}`
-          }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
-          },
-        );
-      }
 
       if (!metadata?.webinarId || !metadata?.registrationId) {
         console.error(`[${new Date().toISOString()}] - Missing webinar metadata:`, metadata);
@@ -273,17 +265,62 @@ serve(async (req) => {
           },
         );
       }
+
+      // Fetch authoritative webinar price from DB
+      const { data: webinarRow, error: webinarErr } = await supabase
+        .from('webinars')
+        .select('discounted_price, title')
+        .eq('id', metadata.webinarId)
+        .single();
+
+      if (webinarErr || !webinarRow) {
+        console.error(`[${new Date().toISOString()}] - Unable to fetch webinar for pricing:`, webinarErr);
+        return new Response(
+          JSON.stringify({ error: 'Unable to fetch webinar pricing' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 },
+        );
+      }
+
+      originalPrice = Number(webinarRow.discounted_price || 0);
+      if (!originalPrice || originalPrice <= 0) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid webinar price configured' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 },
+        );
+      }
+
+      finalAmount = originalPrice;
+
+      // Apply webinar coupon "primo" for 99% OFF
+      const normalizedCoupon = (couponCode || '').toLowerCase().trim();
+      if (normalizedCoupon === 'primo') {
+        const reduced = Math.max(100, Math.floor(originalPrice * 0.01));
+        discountAmount = originalPrice - reduced;
+        finalAmount = reduced;
+        appliedCoupon = 'primo';
+      }
+
+      // If client sent an amount that differs, prefer server amount; do not hard-fail
+      if (frontendCalculatedAmount && frontendCalculatedAmount !== finalAmount) {
+        console.log(`[${new Date().toISOString()}] - Frontend amount (${frontendCalculatedAmount}) differs from server computed amount (${finalAmount}). Proceeding with server amount.`);
+      }
+
+      if (!finalAmount || finalAmount <= 0) {
+        return new Response(
+          JSON.stringify({ error: 'Calculated payable amount is invalid' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 },
+        );
+      }
     }
 
     // Get plan details
     let plan: PlanConfig;
     if (isWebinarPayment) {
-      // FIX: Amount is already in paise, don't divide by 100
       plan = {
         id: 'webinar_payment',
         name: metadata?.webinarTitle || 'Webinar Registration',
-        price: frontendCalculatedAmount,  // CHANGED: Removed / 100
-        mrp: frontendCalculatedAmount,    // CHANGED: Removed / 100
+        price: originalPrice / 100,
+        mrp: originalPrice / 100,
         discountPercentage: 0,
         duration: 'One-time Purchase',
         optimizations: 0,
@@ -325,12 +362,14 @@ serve(async (req) => {
       plan = foundPlan;
     }
 
-    let originalPrice = isWebinarPayment ? frontendCalculatedAmount : (plan?.price || 0) * 100;
-    let discountAmount = 0;
-    let finalAmount = originalPrice;
-    let appliedCoupon = null;
+    if (!isWebinarPayment) {
+      originalPrice = (plan?.price || 0) * 100;
+      discountAmount = 0;
+      finalAmount = originalPrice;
+      appliedCoupon = null;
+    }
 
-    // Skip coupon processing for webinar payments
+    // Coupon processing
     if (couponCode && !isWebinarPayment) {
       const normalizedCoupon = couponCode.toLowerCase().trim();
 
@@ -419,7 +458,7 @@ serve(async (req) => {
       }
     }
 
-    if (walletDeduction && walletDeduction > 0) {
+    if (!isWebinarPayment && walletDeduction && walletDeduction > 0) {
       finalAmount = Math.max(0, finalAmount - walletDeduction);
     }
 
@@ -427,11 +466,7 @@ serve(async (req) => {
       finalAmount += addOnsTotal;
     }
 
-    // For webinar payments, use frontend amount directly
-    if (isWebinarPayment) {
-      finalAmount = frontendCalculatedAmount;
-      console.log(`[${new Date().toISOString()}] - Webinar payment validated. Amount: ${frontendCalculatedAmount} paise`);
-    } else {
+    if (!isWebinarPayment) {
       if (finalAmount !== frontendCalculatedAmount) {
         console.error(`[${new Date().toISOString()}] - Price mismatch detected! Backend calculated: ${finalAmount}, Frontend sent: ${frontendCalculatedAmount}`);
         return new Response(
@@ -454,20 +489,27 @@ serve(async (req) => {
     // Create pending payment_transactions record
     console.log(`[${new Date().toISOString()}] - Creating pending payment_transactions record.`);
 
-    const transactionInsert: any = {
+    // Build base insert payload
+    const baseInsert: any = {
       user_id: user.id,
       plan_id: (isWebinarPayment || planId === 'addon_only_purchase') ? null : planId,
       status: 'pending',
-      amount: isWebinarPayment ? frontendCalculatedAmount : plan.price * 100,  // CHANGED: Use correct base amount
+      amount: plan.price * 100,
       currency: 'INR',
+      order_id: 'PENDING',
+      payment_id: 'PENDING',
       coupon_code: appliedCoupon,
       discount_amount: discountAmount,
       final_amount: finalAmount,
-      purchase_type: isWebinarPayment ? 'webinar' : (planId === 'addon_only_purchase' ? 'addon_only' : (Object.keys(selectedAddOns || {}).length > 0 ? 'plan_with_addons' : 'plan')),
+      purchase_type: isWebinarPayment
+        ? 'webinar'
+        : (planId === 'addon_only_purchase'
+            ? 'addon_only'
+            : (Object.keys(selectedAddOns || {}).length > 0 ? 'plan_with_addons' : 'plan')),
     };
 
     if (isWebinarPayment && metadata) {
-      transactionInsert.metadata = {
+      baseInsert.metadata = {
         type: 'webinar',
         webinarId: metadata.webinarId,
         registrationId: metadata.registrationId,
@@ -475,23 +517,51 @@ serve(async (req) => {
       };
     }
 
-    const { data: transaction, error: transactionError } = await supabase
-      .from('payment_transactions')
-      .insert(transactionInsert)
-      .select('id')
-      .single();
+    // Attempt insert, and on schema errors (missing columns), fall back by removing fields
+    const tryInsert = async (payload: any): Promise<{ id: string }> => {
+      const { data, error } = await supabase
+        .from('payment_transactions')
+        .insert(payload)
+        .select('id')
+        .single();
+      if (error) throw error;
+      return data as { id: string };
+    };
 
-    if (transactionError) {
-      console.error(`[${new Date().toISOString()}] - Error inserting pending transaction:`, transactionError);
-      throw new Error(`Failed to initiate payment transaction: ${transactionError.message}`);
+    let transactionId: string | null = null;
+    try {
+      const t = await tryInsert(baseInsert);
+      transactionId = t.id;
+    } catch (e: any) {
+      const msg = String(e?.message || '');
+      console.warn(`[${new Date().toISOString()}] - Initial transaction insert failed: ${msg}`);
+      // Create a shallow copy and remove fields known to be optional in older schemas
+      const fallbackInsert = { ...baseInsert };
+      delete fallbackInsert.metadata;
+      // Some databases might not have purchase_type
+      delete fallbackInsert.purchase_type;
+      try {
+        const t2 = await tryInsert(fallbackInsert);
+        transactionId = t2.id;
+      } catch (e2: any) {
+        console.error(`[${new Date().toISOString()}] - Fallback transaction insert failed:`, e2);
+        throw new Error(`Failed to initiate payment transaction: ${e2?.message || 'unknown error'}`);
+      }
     }
     
-    const transactionId = transaction.id;
     console.log(`[${new Date().toISOString()}] - Pending transaction created with ID: ${transactionId}`);
 
     // Create Razorpay order
-    const razorpayKeyId = Deno.env.get('RAZORPAY_KEY_ID');
-    const razorpayKeySecret = Deno.env.get('RAZORPAY_KEY_SECRET');
+    // Choose Razorpay creds based on mode (test/live)
+    const envTestMode = (Deno.env.get('RAZORPAY_TEST_MODE') || '').toLowerCase() === 'true';
+    const isTestMode = Boolean(testMode) || envTestMode;
+
+    const razorpayKeyId = isTestMode
+      ? (Deno.env.get('RAZORPAY_TEST_KEY_ID') || Deno.env.get('RAZORPAY_KEY_ID'))
+      : Deno.env.get('RAZORPAY_KEY_ID');
+    const razorpayKeySecret = isTestMode
+      ? (Deno.env.get('RAZORPAY_TEST_KEY_SECRET') || Deno.env.get('RAZORPAY_KEY_SECRET'))
+      : Deno.env.get('RAZORPAY_KEY_SECRET');
 
     if (!razorpayKeyId || !razorpayKeySecret) {
       console.error(`[${new Date().toISOString()}] - Razorpay credentials not configured`);
@@ -505,7 +575,7 @@ serve(async (req) => {
       notes: {
         planId: planId || 'webinar_payment',
         planName: plan.name,
-        originalAmount: isWebinarPayment ? frontendCalculatedAmount : plan.price * 100,  // CHANGED: Consistent amount
+        originalAmount: plan.price * 100,
         couponCode: appliedCoupon,
         discountAmount: discountAmount,
         walletDeduction: walletDeduction || 0,
@@ -516,6 +586,7 @@ serve(async (req) => {
         webinarId: metadata?.webinarId || '',
         registrationId: metadata?.registrationId || '',
         webinarTitle: metadata?.webinarTitle || '',
+        mode: isTestMode ? 'test' : 'live',
       },
     };
 
@@ -544,6 +615,16 @@ serve(async (req) => {
     const order = await response.json();
     console.log(`[${new Date().toISOString()}] - Razorpay order created successfully: ${order.id}`);
 
+    // Try to persist the order_id to the pending transaction (best-effort)
+    try {
+      await supabase
+        .from('payment_transactions')
+        .update({ order_id: order.id })
+        .eq('id', transactionId as string);
+    } catch (e) {
+      console.warn(`[${new Date().toISOString()}] - Failed to update order_id on payment_transactions:`, e);
+    }
+
     return new Response(
       JSON.stringify({
         orderId: order.id,
@@ -551,6 +632,7 @@ serve(async (req) => {
         keyId: razorpayKeyId,
         currency: 'INR',
         transactionId: transactionId,
+        mode: isTestMode ? 'test' : 'live',
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
