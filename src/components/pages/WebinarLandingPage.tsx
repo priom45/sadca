@@ -155,6 +155,21 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
   setIsProcessingPayment(true);
 
   try {
+    // CRITICAL FIX: Get fresh auth session token
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !session) {
+      console.error('Session error:', sessionError);
+      setIsProcessingPayment(false);
+      alert('Your session has expired. Please log in again.');
+      if (onShowAuth) {
+        onShowAuth();
+      }
+      return;
+    }
+
+    console.log('Session validated. User ID:', session.user.id);
+
     // Step 1: Create registration
     console.log('Creating webinar registration...');
     const registration = await webinarService.createRegistration(
@@ -226,37 +241,45 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
     };
 
     console.log('Creating payment order with body:', orderRequestBody);
+    console.log('Using auth token from session');
 
-    // Step 3: Create payment order via Supabase function
+    // Step 3: Create payment order via Supabase function with proper auth headers
     const { data: orderData, error: orderError } = await supabase.functions.invoke('create-order', {
-      body: orderRequestBody
+      body: orderRequestBody,
+      headers: {
+        Authorization: `Bearer ${session.access_token}`
+      }
     });
 
     console.log('Order response:', { data: orderData, error: orderError });
 
     if (orderError) {
       console.error('Order error details:', orderError);
-      // Try to extract details from the Edge Function response for better diagnosis
-      let details = '';
-      try {
-        const anyErr: any = orderError as any;
-        if (anyErr?.context?.json) {
-          const json = await anyErr.context.json();
-          details = json?.error || JSON.stringify(json);
-        } else if (anyErr?.context?.text) {
-          details = await anyErr.context.text();
-        }
-      } catch (e) {
-        // ignore
+      setIsProcessingPayment(false);
+
+      // Provide user-friendly error messages
+      let userMessage = 'Failed to create payment order. ';
+
+      if (orderError.message?.includes('401') || orderError.message?.includes('Unauthorized')) {
+        userMessage = 'Authentication error. Please log out and log in again, then try registering for the webinar.';
+      } else if (orderError.message?.includes('network') || orderError.message?.includes('fetch')) {
+        userMessage = 'Network error. Please check your internet connection and try again.';
+      } else if (orderError.message?.includes('Invalid payment amount')) {
+        userMessage = 'Invalid webinar pricing configuration. Please contact support.';
+      } else {
+        userMessage += orderError.message || 'An unexpected error occurred. Please try again or contact support.';
       }
-      const baseMsg = orderError.message || 'Unknown error occurred';
-      const composed = details ? `${baseMsg} — ${details}` : baseMsg;
-      throw new Error(`Payment order error: ${composed}`);
+
+      alert(userMessage);
+      console.error('Full error object:', JSON.stringify(orderError, null, 2));
+      return;
     }
 
     if (!orderData || !orderData.orderId) {
       console.error('Invalid order data received:', orderData);
-      throw new Error('Failed to create payment order - no order ID received');
+      setIsProcessingPayment(false);
+      alert('Failed to create payment order. The server did not return a valid order ID. Please try again or contact support.');
+      return;
     }
 
     // Step 4: Get Razorpay key (prefer test key when test mode)
@@ -279,6 +302,7 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
         try {
           console.log('Payment successful, verifying...', response);
           
+          // CRITICAL FIX: Use the same session token for verify-payment
           const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verify-payment', {
             body: {
               razorpay_order_id: response.razorpay_order_id,
@@ -290,6 +314,9 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
                 webinarId: webinar.id,
                 registrationId: registration.id
               }
+            },
+            headers: {
+              Authorization: `Bearer ${session.access_token}`
             }
           });
 
@@ -358,31 +385,44 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
   } catch (error: any) {
     console.error('Error creating registration:', error);
     setIsProcessingPayment(false);
-    
+
     // IMPROVED ERROR HANDLING
-    let errorMessage = 'Failed to create registration. Please try again.';
-    
+    let errorMessage = 'Failed to create registration. ';
+    let shouldShowAuth = false;
+
     if (error?.message) {
       const msg = String(error.message);
-      if (msg.includes('Edge Function returned a non-2xx status code')) {
+
+      if (msg.includes('401') || msg.includes('Unauthorized')) {
+        errorMessage = 'Authentication error. Your session may have expired. Please log in again and retry.';
+        shouldShowAuth = true;
+      } else if (msg.includes('Edge Function returned a non-2xx status code')) {
         errorMessage = 'Payment system error. Please check your internet connection and try again.';
-      } else if (/row-level security/i.test(msg)) {
-        errorMessage = 'Permission denied by security policy. Your session may have expired. Please sign in again and retry.';
-        // Proactively prompt re-auth
-        if (onShowAuth) {
-          onShowAuth();
-        }
-      } else if (/not signed in/i.test(msg)) {
+      } else if (/row-level security/i.test(msg) || /permission denied/i.test(msg)) {
+        errorMessage = 'Permission denied. Your session may have expired. Please sign in again and retry.';
+        shouldShowAuth = true;
+      } else if (/not signed in/i.test(msg) || /no authorization/i.test(msg)) {
         errorMessage = 'You are not signed in. Please log in and try again.';
-        if (onShowAuth) {
-          onShowAuth();
-        }
+        shouldShowAuth = true;
+      } else if (msg.includes('Invalid webinar price')) {
+        errorMessage = 'Invalid webinar pricing configuration. Please contact support.';
+      } else if (msg.includes('network') || msg.includes('fetch failed')) {
+        errorMessage = 'Network error. Please check your internet connection and try again.';
       } else {
-        errorMessage = msg;
+        errorMessage += msg;
       }
+    } else {
+      errorMessage += 'An unexpected error occurred. Please try again.';
     }
-    
-    alert(`Registration Error: ${errorMessage}`);
+
+    alert(errorMessage);
+    console.error('Full error details:', { error, message: error?.message, stack: error?.stack });
+
+    if (shouldShowAuth && onShowAuth) {
+      setTimeout(() => {
+        onShowAuth();
+      }, 500);
+    }
   }
 };
 
