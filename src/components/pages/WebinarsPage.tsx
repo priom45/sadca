@@ -106,12 +106,12 @@ export const WebinarsPage: React.FC<WebinarsPageProps> = ({ onShowAuth }) => {
     return days;
   };
 
-  const WebinarCard: React.FC<{ webinar: Webinar }> = ({ webinar }) => {
+  const WebinarCard: React.FC<{ webinar: Webinar; registrationId?: string }> = ({ webinar, registrationId }) => {
     const discountPercentage = Math.round(
       ((webinar.original_price - webinar.discounted_price) / webinar.original_price) * 100
     );
     const daysUntil = calculateDaysUntil(webinar.scheduled_at);
-    const isRegistered = myRegistrations.some(reg => reg.webinar_id === webinar.id);
+    const isRegistered = myRegistrations.some(reg => reg.webinar_id === webinar.id) || Boolean(registrationId);
 
     return (
       <motion.div
@@ -188,15 +188,15 @@ export const WebinarsPage: React.FC<WebinarsPageProps> = ({ onShowAuth }) => {
             </div>
           </div>
 
-          {webinar.status === 'upcoming' && daysUntil > 0 && (
+          {webinar.status === 'upcoming' && (
             <div className="mb-4 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
               <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">
-                {daysUntil === 1 ? 'Starts tomorrow!' : `Starts in ${daysUntil} days`}
+                {daysUntil <= 0 ? 'Starts today!' : daysUntil === 1 ? 'Starts tomorrow!' : `Starts in ${daysUntil} days`}
               </p>
             </div>
           )}
 
-          <div className="flex items-center justify-between mb-4">
+          <div className={`flex items-center justify-between mb-4 ${registrationId ? 'hidden' : ''}`}>
             <div>
               <span className="text-gray-500 dark:text-gray-400 line-through text-sm">
                 ₹{(webinar.original_price / 100).toFixed(0)}
@@ -211,9 +211,20 @@ export const WebinarsPage: React.FC<WebinarsPageProps> = ({ onShowAuth }) => {
               )}
             </div>
           </div>
+          {registrationId && (
+            <div className="flex items-center justify-between mb-4">
+              <span className="px-3 py-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded text-sm font-semibold">Enrolled</span>
+            </div>
+          )}
 
           <button
-            onClick={() => navigate(`/webinar/${webinar.slug}`)}
+            onClick={() => {
+              if (registrationId) {
+                navigate(`/webinar-details/${registrationId}`);
+              } else {
+                navigate(`/webinar/${webinar.slug}`);
+              }
+            }}
             className="w-full py-3 px-6 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-purple-700 transition-all duration-300 flex items-center justify-center group"
           >
             {isRegistered ? 'View Details' : 'Register Now'}
@@ -264,7 +275,9 @@ export const WebinarsPage: React.FC<WebinarsPageProps> = ({ onShowAuth }) => {
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
         {myRegistrations.map((registration) => (
           <div key={registration.id} className="relative">
-            {registration.webinar && <WebinarCard webinar={registration.webinar} />}
+            {registration.webinar && (
+              <WebinarCard webinar={registration.webinar} registrationId={registration.id} />
+            )}
             {registration.payment_status === 'completed' && registration.meet_link_sent && (
               <div className="mt-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
                 <p className="text-sm text-green-700 dark:text-green-300 mb-2 font-medium">
