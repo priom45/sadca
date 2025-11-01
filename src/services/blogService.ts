@@ -553,6 +553,7 @@ export const blogService = {
 
   async isPostBookmarked(userId: string, blogPostId: string): Promise<boolean> {
     try {
+      // Check if table exists first
       const { data, error } = await supabase
         .from('blog_user_interactions')
         .select('id')
@@ -561,13 +562,25 @@ export const blogService = {
         .eq('interaction_type', 'bookmarked')
         .maybeSingle();
 
-      if (error) throw error;
+      // If error is 404 or table doesn't exist, silently return false
+      if (error) {
+        if (error.code === 'PGRST116' || error.message?.includes('does not exist') || error.message?.includes('404')) {
+          console.warn('blog_user_interactions table does not exist. Bookmark feature disabled.');
+          return false;
+        }
+        throw error;
+      }
       return !!data;
-    } catch (error) {
+    } catch (error: any) {
+      // Handle 404 or table missing errors gracefully
+      if (error?.code === 'PGRST116' || error?.message?.includes('404') || error?.status === 404) {
+        return false;
+      }
       console.error('Error checking bookmark status:', error);
       return false;
     }
   },
+
 
   async removeBookmark(userId: string, blogPostId: string): Promise<void> {
     try {
