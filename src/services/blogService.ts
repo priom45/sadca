@@ -489,7 +489,7 @@ export const blogService = {
     }
   },
 
-  async trackUserInteraction(
+    async trackUserInteraction(
     userId: string,
     blogPostId: string,
     interactionType: 'viewed' | 'bookmarked' | 'completed',
@@ -508,19 +508,40 @@ export const blogService = {
           onConflict: 'user_id,blog_post_id,interaction_type'
         });
 
-      if (error) throw error;
-    } catch (error) {
+      if (error) {
+        // Silently fail if table doesn't exist
+        if (error.code === 'PGRST116' || error.message?.includes('does not exist') || error.message?.includes('404')) {
+          console.warn('blog_user_interactions table does not exist. Interaction tracking disabled.');
+          return;
+        }
+        throw error;
+      }
+    } catch (error: any) {
+      // Handle 404 errors gracefully
+      if (error?.code === 'PGRST116' || error?.message?.includes('404') || error?.status === 404) {
+        return;
+      }
       console.error('Error tracking user interaction:', error);
     }
   },
 
-  async getUserBookmarkedPosts(userId: string): Promise<BlogPostWithRelations[]> {
+
+    async getUserBookmarkedPosts(userId: string): Promise<BlogPostWithRelations[]> {
     try {
-      const { data: interactions } = await supabase
+      const { data: interactions, error: interactionError } = await supabase
         .from('blog_user_interactions')
         .select('blog_post_id')
         .eq('user_id', userId)
         .eq('interaction_type', 'bookmarked');
+
+      // Handle table not existing
+      if (interactionError) {
+        if (interactionError.code === 'PGRST116' || interactionError.message?.includes('does not exist') || interactionError.message?.includes('404')) {
+          console.warn('blog_user_interactions table does not exist. Returning empty bookmarks.');
+          return [];
+        }
+        throw interactionError;
+      }
 
       if (!interactions || interactions.length === 0) return [];
 
@@ -545,11 +566,15 @@ export const blogService = {
       );
 
       return postsWithRelations;
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.code === 'PGRST116' || error?.message?.includes('404') || error?.status === 404) {
+        return [];
+      }
       console.error('Error fetching bookmarked posts:', error);
       return [];
     }
   },
+
 
   async isPostBookmarked(userId: string, blogPostId: string): Promise<boolean> {
     try {
@@ -582,7 +607,7 @@ export const blogService = {
   },
 
 
-  async removeBookmark(userId: string, blogPostId: string): Promise<void> {
+    async removeBookmark(userId: string, blogPostId: string): Promise<void> {
     try {
       const { error } = await supabase
         .from('blog_user_interactions')
@@ -591,9 +616,19 @@ export const blogService = {
         .eq('blog_post_id', blogPostId)
         .eq('interaction_type', 'bookmarked');
 
-      if (error) throw error;
-    } catch (error) {
+      if (error) {
+        if (error.code === 'PGRST116' || error.message?.includes('does not exist') || error.message?.includes('404')) {
+          console.warn('blog_user_interactions table does not exist. Cannot remove bookmark.');
+          return;
+        }
+        throw error;
+      }
+    } catch (error: any) {
+      if (error?.code === 'PGRST116' || error?.message?.includes('404') || error?.status === 404) {
+        return;
+      }
       console.error('Error removing bookmark:', error);
     }
   }
+
 };
