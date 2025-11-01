@@ -500,8 +500,8 @@ const handleDiwaliCTAClick = useCallback(() => {
           />
           <Route path="/blog" element={<EnhancedBlogPage isAuthenticated={isAuthenticated} onShowAuth={() => setShowAuthModal(true)} />} />
           <Route path="/blog/:slug" element={<BlogPostPage />} />
-          <Route path="/webinars" element={<WebinarsPage />} />
-          <Route path="/webinar/:slug" element={<WebinarLandingPage />} />
+          <Route path="/webinars" element={<WebinarsPage onShowAuth={handleShowAuth} />} />
+          <Route path="/webinar/:slug" element={<WebinarLandingPage onShowAuth={handleShowAuth} />} />
           <Route
             path="/admin/blog"
             element={
