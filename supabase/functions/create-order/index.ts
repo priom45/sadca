@@ -190,16 +190,23 @@ const addOns = [
 
 serve(async (req) => {
   console.log(`[${new Date().toISOString()}] - Function execution started.`);
+  console.log(`[${new Date().toISOString()}] - Request method: ${req.method}`);
+  console.log(`[${new Date().toISOString()}] - Request headers:`, Object.fromEntries(req.headers.entries()));
 
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  let requestBody: any;
+  
   try {
-    const body: OrderRequest = await req.json();
-    const { planId, couponCode, walletDeduction, addOnsTotal, amount: frontendCalculatedAmount, selectedAddOns, metadata } = body;
+    const bodyText = await req.text();
+    console.log(`[${new Date().toISOString()}] - Raw request body:`, bodyText);
+    requestBody = JSON.parse(bodyText);
     
-    console.log(`[${new Date().toISOString()}] - Request received:`, {
+    const { planId, couponCode, walletDeduction, addOnsTotal, amount: frontendCalculatedAmount, selectedAddOns, metadata } = requestBody;
+    
+    console.log(`[${new Date().toISOString()}] - Parsed request:`, {
       planId,
       couponCode,
       walletDeduction,
@@ -208,6 +215,7 @@ serve(async (req) => {
       selectedAddOns,
       metadata
     });
+
 
     // Get user from auth header
     const authHeader = req.headers.get('authorization');
