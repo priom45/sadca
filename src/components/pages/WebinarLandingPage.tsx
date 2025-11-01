@@ -222,7 +222,7 @@ export const WebinarLandingPage: React.FC<WebinarLandingPageProps> = ({ onShowAu
       setShowRegistrationModal(false);
       setIsProcessingPayment(false);
       alert('Registration successful (test mode). Check your email for the meeting link.');
-      navigate('/webinars');
+      navigate(`/webinar-details/${registration.id}`);
       return;
     }
 
